@@ -1,6 +1,6 @@
-#include "generator.h"
+#include "generator.hpp"
 
-#include "make_graph.h"
+#include "make_graph.hpp"
 #include <stddef.h>
 
 void print_edge_list(edge_list* list) {

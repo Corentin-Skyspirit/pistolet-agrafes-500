@@ -10,8 +10,8 @@
 #ifndef __STDC_CONSTANT_MACROS
 #	define __STDC_CONSTANT_MACROS
 #endif
-#include "graph_generator.h"
-#include "splittable_mrg.h"
+#include "graph_generator.hpp"
+#include "splittable_mrg.hpp"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -26,7 +26,7 @@
 #ifdef GRAPH_GENERATOR_OMP
 #	include <omp.h>
 #endif
-#include "utils.h"
+#include "utils.hpp"
 
 #if defined(_OPENMP)
 #	define OMP(x_) _Pragma(x_)

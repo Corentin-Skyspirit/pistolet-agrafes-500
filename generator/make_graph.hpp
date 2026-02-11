@@ -10,7 +10,7 @@
 #ifndef MAKE_GRAPH_H
 #define MAKE_GRAPH_H
 
-#include "graph_generator.h"
+#include "graph_generator.hpp"
 #include <stdint.h>
 
 #ifdef __cplusplus

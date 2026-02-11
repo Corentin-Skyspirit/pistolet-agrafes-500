@@ -10,7 +10,7 @@
 #ifndef MOD_ARITH_H
 #define MOD_ARITH_H
 
-#include "user_settings.h"
+#include "user_settings.hpp"
 
 /* Various modular arithmetic operations for modulus 2^31-1 (0x7FFFFFFF).
  * These may need to be tweaked to get acceptable performance on some platforms
@@ -20,12 +20,12 @@
  * per-platform. */
 
 #ifdef __MTA__
-#	include "mod_arith_xmt.h"
+#	include "mod_arith_xmt.hpp"
 #else
 #	ifdef FAST_64BIT_ARITHMETIC
-#		include "mod_arith_64bit.h"
+#		include "mod_arith_64bit.hpp"
 #	else
-#		include "mod_arith_32bit.h"
+#		include "mod_arith_32bit.hpp"
 #	endif
 #endif
 

@@ -10,7 +10,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include "splittable_mrg.h"
+#include "splittable_mrg.hpp"
 #include <stddef.h>
 #include <stdint.h>
 

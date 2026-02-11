@@ -6,7 +6,7 @@
 #ifndef GENERATOR_H
 #define GENERATOR_H
 
-#include "graph_generator.h"
+#include "graph_generator.hpp"
 
 /**
  * @brief The generated edge list.

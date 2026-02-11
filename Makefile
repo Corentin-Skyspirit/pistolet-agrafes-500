@@ -1,11 +1,11 @@
 CFLAGS = -Drestrict=__restrict__ -O3 -DREUSE_CSR_FOR_VALIDATION -I../aml -march=native
 LDFLAGS = -lpthread
-MPICC = mpicc
+MPICC = mpicxx
 
 all: main
 
-GENERATOR_SOURCES = generator/graph_generator.c generator/make_graph.c generator/splittable_mrg.c generator/utils.c generator/generator.c
-SOURCES = src/main.c
+GENERATOR_SOURCES = generator/graph_generator.cpp generator/make_graph.cpp generator/splittable_mrg.cpp generator/utils.cpp generator/generator.cpp
+SOURCES = main.cpp
 HEADERS = 
 
 main: $(SOURCES) $(HEADERS) $(GENERATOR_SOURCES)
