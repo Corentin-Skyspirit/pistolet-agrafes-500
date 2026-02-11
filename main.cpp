@@ -1,4 +1,7 @@
-#include "../generator/generator.h"
+#include "generator/generator.hpp"
+#include "kernels/gen_graph.hpp"
+#include "kernels/breadth_search.hpp"
+#include "kernels/shortest_path.hpp"
 #include <stdio.h>
 
 int main() {
