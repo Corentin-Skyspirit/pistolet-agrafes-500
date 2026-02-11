@@ -7,7 +7,7 @@
 typedef struct graph graph;
 struct graph {
 	uint64_t* slicing_idx;
-	uint64_t* neighbors;
+	int64_t* neighbors;
 	float* weight;
 	double time_s;
 
