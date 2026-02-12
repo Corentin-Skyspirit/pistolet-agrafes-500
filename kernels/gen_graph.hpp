@@ -4,14 +4,14 @@
 #include "../generator/generator.hpp"
 #include <cstdint>
 
-typedef struct graph graph;
-struct graph {
-	uint64_t* slicing_idx;
+typedef struct {
+	int64_t* slicing_idx;
 	int64_t* neighbors;
-	float* weight;
+	float* weights;
 	double time_s;
+	int64_t length;
+} graph;
 
-	graph from_edge_list(edge_list input_list);
-};
+graph from_edge_list(edge_list input_list);
 
 #endif
