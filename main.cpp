@@ -9,6 +9,7 @@
 int main(int argc, char const* argv[]) {
 	printf("Hello world\n");
 	edge_list list = generate_graph(15, 5);
+	// edge_list list = generate_graph(5, 2);
 	// print_edge_list(&list);
 	graph g = from_edge_list(list); // Kernel 1 compute
 	std::cout << "Graph generation : nb_nodes = " << g.nb_nodes << ", nb_neighbors = " << g.length << ", time = " << g.time_ms << "ms"

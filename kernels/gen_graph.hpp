@@ -37,4 +37,7 @@ static uint64_t degree_of_node(const graph& g, int64_t node) {
 	return g.slicing_idx[node + 1] - g.slicing_idx[node];
 }
 
+// Compare two graphs for structural equality. Returns true if identical.
+bool compare_graphs(const graph& a, const graph& b, double weight_eps = 1e-6);
+
 #endif
