@@ -31,8 +31,9 @@ shortest_path sssp(graph g, int64_t root) {
 		auto [dist_u, u] = pq.top();
 		pq.pop();
 
-		if (dist_u > sp.distance_array[u])
+		if (dist_u > sp.distance_array[u]) {
 			continue;
+		}
 
 		for (int64_t i = g.slicing_idx[u]; i < g.slicing_idx[u + 1]; i++) {
 			int64_t v = g.neighbors[i];

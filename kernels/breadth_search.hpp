@@ -7,8 +7,9 @@
 typedef struct {
 	int64_t* parent_array;
 	double teps;
+	double time_ms;
 } bfs_result;
 
-bfs_result bfs(graph& g);
+bfs_result bfs(graph& g, int64_t source);
 
 #endif

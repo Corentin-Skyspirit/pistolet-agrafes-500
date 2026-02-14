@@ -15,4 +15,26 @@ typedef struct {
 
 graph from_edge_list(edge_list input_list);
 
+// Utilities
+template <typename F> static inline void for_each_neighbor(const graph& g, int64_t node, F f) {
+	int64_t start = g.slicing_idx[node];
+	int64_t end = g.slicing_idx[node + 1];
+	for (int64_t i = start; i < end; i++) {
+		f(g.neighbors[i], g.weights[i]);
+	}
+}
+
+template <typename F> static inline void parallel_for_each_neighbor(const graph& g, int64_t node, F f) {
+	int64_t start = g.slicing_idx[node];
+	int64_t end = g.slicing_idx[node + 1];
+#pragma omp parallel for
+	for (int64_t i = start; i < end; i++) {
+		f(g.neighbors[i], g.weights[i]);
+	}
+}
+
+static uint64_t degree_of_node(const graph& g, int64_t node) {
+	return g.slicing_idx[node + 1] - g.slicing_idx[node];
+}
+
 #endif
