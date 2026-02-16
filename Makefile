@@ -1,5 +1,5 @@
-CFLAGS = -Drestrict=__restrict__ -O3 -DREUSE_CSR_FOR_VALIDATION -I../aml -march=native
-LDFLAGS = -lpthread
+CFLAGS = -Drestrict=__restrict__ -O3 -DREUSE_CSR_FOR_VALIDATION -I../aml -march=native -fopenmp
+LDFLAGS = -lm -lpthread -ltbb
 MPICC = mpicxx
 
 all: main
@@ -9,4 +9,4 @@ SOURCES = main.cpp
 HEADERS = 
 
 main: $(SOURCES) $(HEADERS) $(GENERATOR_SOURCES)
-	$(MPICC) $(CFLAGS) $(LDFLAGS) -o main $(SOURCES) $(GENERATOR_SOURCES) -lm
+	$(MPICC) $(CFLAGS) -o main $(SOURCES) $(GENERATOR_SOURCES) $(LDFLAGS)

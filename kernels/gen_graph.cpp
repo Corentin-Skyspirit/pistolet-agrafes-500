@@ -1,9 +1,18 @@
 #include "gen_graph.hpp"
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <iostream>
+#include <omp.h>
+#include <tbb/parallel_sort.h>
 #include <vector>
+
+void graph_destroy(graph& g) {
+	free(g.neighbors);
+	free(g.weights);
+	free(g.slicing_idx);
+}
 
 void print_slicing_idx(const graph& g) {
 	std::cout << "slicing_idx: ";
@@ -14,7 +23,7 @@ void print_slicing_idx(const graph& g) {
 }
 
 void print_neighbors(const graph& g) {
-	for (int64_t node = 0; node < g.nb_nodes; ++node) {
+	for (int64_t node = 0; node < g.nb_nodes; node++) {
 		std::cout << "Node " << node << ": ";
 		for (int64_t i = g.slicing_idx[node]; i < g.slicing_idx[node + 1]; ++i) {
 			std::cout << "(" << g.neighbors[i] << ", " << g.weights[i] << ") ";
@@ -44,7 +53,7 @@ static void print_neighbors_of_node(const graph& graph_obj, int64_t node) {
 	std::cout << '\n';
 }
 
-graph __from_edge_list(edge_list input_list) {
+graph from_edge_list_v1(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	int64_t max_node = 0;
 	for (int64_t i = 0; i < input_list.length; i++) {
@@ -117,7 +126,7 @@ bool is_loop(const packed_edge& e) {
 	return e.v0 == e.v1;
 }
 
-graph _from_edge_list(edge_list input_list) {
+graph from_edge_list_v2(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	graph g;
 
@@ -197,7 +206,7 @@ graph _from_edge_list(edge_list input_list) {
 	g.time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count();
 
 	// Verification avec vieux algorithme
-	// graph g2 = _from_edge_list(input_list);
+	// graph g2 = from_edge_list_v1(input_list);
 	// print_slicing_idx(g);
 	// print_slicing_idx(g2);
 	// for (int64_t node = 0; node < g.nb_nodes; ++node) {
@@ -211,7 +220,7 @@ graph _from_edge_list(edge_list input_list) {
 // Fast two-pass CSR builder (counts -> prefix-sum -> fill).
 // - emits undirected edges (u->v and v->u)
 // - O(n + m) time, no global sort
-graph from_edge_list(edge_list input_list) {
+graph from_edge_list_v3(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	graph g;
 
@@ -326,13 +335,276 @@ graph from_edge_list(edge_list input_list) {
 	g.length = write_pos;
 
 	// Verification avec vieux algorithme
-	// graph g_ref = _from_edge_list(input_list);
+	// graph g_ref = from_edge_list_v2(input_list);
 	// print_slicing_idx(g);
 	// print_slicing_idx(g_ref);
 	// for (int64_t node = 0; node < g.nb_nodes; ++node) {
 	// 	print_neighbors_of_node(g, node);
 	// 	print_neighbors_of_node(g_ref, node);
 	// }
+
+	return g;
+}
+
+graph from_edge_list_v2_parallel(edge_list input_list) {
+	auto start = std::chrono::high_resolution_clock::now();
+	graph g;
+
+	edge* edges = (edge*)malloc(sizeof(edge) * 2 * input_list.length);
+
+#pragma omp parallel for schedule(static)
+	// Duplicate the edges
+	for (size_t i = 0; i < input_list.length; i++) {
+		edges[2 * i] = (edge){
+			.u = input_list.edges[i].v1,
+			.v = input_list.edges[i].v0,
+			.weight = input_list.weights[i],
+		};
+		edges[(2 * i) + 1] = (edge){
+			.u = input_list.edges[i].v0,
+			.v = input_list.edges[i].v1,
+			.weight = input_list.weights[i],
+		};
+	}
+
+	// Sort them lexicographically
+	tbb::parallel_sort(edges, edges + (input_list.length * 2), [&](const edge& e1, const edge& e2) {
+		if (e1.u != e2.u) {
+			return e1.u < e2.u;
+		}
+		return e1.v < e2.v;
+	});
+
+	int64_t nb_nodes = edges[(input_list.length * 2) - 1].u + 1;
+	g.slicing_idx = (int64_t*)malloc(nb_nodes * sizeof(int64_t));
+	g.neighbors = (int64_t*)malloc(2 * input_list.length * sizeof(int64_t));
+	g.weights = (float*)malloc(2 * input_list.length * sizeof(float));
+
+	// If there are loops at the beginning
+	int nb_skipped = 0;
+	while (is_loop(edges[0])) {
+		edges++;
+		nb_skipped++;
+	}
+
+	int64_t nb_nodes_so_far = 0;
+	auto first_node = edges[0].u;
+	g.slicing_idx[first_node] = 0;
+	g.neighbors[0] = edges[0].v;
+	g.weights[0] = edges[0].weight;
+	int64_t nb_neighbors_so_far = 1;
+	for (int64_t i = 1; i < (2 * input_list.length) - nb_skipped; i++) {
+		if (are_same_edge(edges[i], edges[i - 1])) {
+			continue;
+		}
+
+		if (is_loop(edges[i])) {
+			continue;
+		}
+
+		if (edges[i].u != edges[i - 1].u) {
+			// Fill slicing_idx for intermediary nodes with no neighbors
+			for (int64_t missing = edges[i - 1].u + 1; missing < edges[i].u; ++missing) {
+				nb_nodes_so_far++;
+				g.slicing_idx[nb_nodes_so_far] = nb_neighbors_so_far;
+			}
+			// Different node -> mark a slice
+			nb_nodes_so_far++;
+			g.slicing_idx[nb_nodes_so_far] = nb_neighbors_so_far;
+		}
+
+		// Push v as a neighbor of u
+		g.neighbors[nb_neighbors_so_far] = edges[i].v;
+		g.weights[nb_neighbors_so_far] = edges[i].weight;
+		nb_neighbors_so_far++;
+	}
+	// Close off the slices
+	nb_nodes_so_far++;
+	g.slicing_idx[nb_nodes_so_far] = nb_neighbors_so_far;
+	g.length = nb_neighbors_so_far;
+	g.nb_nodes = nb_nodes;
+
+	g.time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count();
+
+	// Verification avec vieux algorithme
+	// graph g2 = from_edge_list_v1(input_list);
+	// print_slicing_idx(g);
+	// print_slicing_idx(g2);
+	// for (int64_t node = 0; node < g.nb_nodes; ++node) {
+	// 	print_neighbors_of_node(g, node);
+	// 	print_neighbors_of_node(g2, node);
+	// }
+
+	return g;
+}
+
+graph from_edge_list_v3_parallel(edge_list input_list) {
+	auto start = std::chrono::high_resolution_clock::now();
+	graph g;
+
+	// Compute number of nodes
+	int64_t max_node = -1;
+#pragma omp parallel for reduction(max : max_node)
+	for (int64_t i = 0; i < input_list.length; ++i) {
+		max_node = std::max(max_node, input_list.edges[i].v0);
+		max_node = std::max(max_node, input_list.edges[i].v1);
+	}
+	int64_t nb_nodes = max_node + 1;
+
+	// Count degrees
+	std::vector<int64_t> degrees(nb_nodes);
+#pragma omp parallel for schedule(static)
+	for (int64_t i = 0; i < input_list.length; ++i) {
+		// Skip loops
+		if (is_loop(input_list.edges[i])) {
+			continue;
+		}
+		degrees[input_list.edges[i].v0]++;
+		degrees[input_list.edges[i].v1]++;
+	}
+
+	// Do prefix sum of degrees to get slicing_idx (parallel scan)
+	g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
+	std::vector<int64_t> partial_sums(omp_get_max_threads() + 1, 0);
+
+	// Compute partial sums in parallel
+#pragma omp parallel
+	{
+		int tid = omp_get_thread_num();
+		int nthreads = omp_get_num_threads();
+		int64_t local_sum = 0;
+		int64_t chunk = (nb_nodes + nthreads - 1) / nthreads;
+		int64_t start = tid * chunk;
+		int64_t end = std::min(nb_nodes, (tid + 1) * chunk);
+		for (int64_t i = start; i < end; ++i) {
+			local_sum += degrees[i];
+		}
+		partial_sums[tid + 1] = local_sum;
+#pragma omp barrier
+		// Prefix sum of partial_sums (single thread)
+#pragma omp single
+		{
+			for (int i = 1; i <= nthreads; ++i) {
+				partial_sums[i] += partial_sums[i - 1];
+			}
+		}
+#pragma omp barrier
+		// Fill slicing_idx in parallel
+		int64_t offset = partial_sums[tid];
+		for (int64_t i = start; i < end; ++i) {
+			g.slicing_idx[i] = offset;
+			offset += degrees[i];
+		}
+	}
+
+	g.slicing_idx[nb_nodes] = partial_sums.back();
+	int64_t nb_edges = partial_sums.back();
+
+	// Allocate neighbor arrays
+	g.neighbors = (int64_t*)malloc(nb_edges * sizeof(int64_t));
+	g.weights = (float*)malloc(nb_edges * sizeof(float));
+
+	// Fill using per-node cursors (parallel): use atomics to allocate per-node slots
+	std::vector<std::atomic<int64_t>> next_write_idx(nb_nodes);
+	for (int64_t i = 0; i < nb_nodes; ++i) {
+		next_write_idx[i].store(g.slicing_idx[i], std::memory_order_relaxed);
+	}
+#pragma omp parallel for schedule(static)
+	for (int64_t i = 0; i < input_list.length; ++i) {
+		int64_t u = input_list.edges[i].v0;
+		int64_t v = input_list.edges[i].v1;
+
+		// Skip loops
+		if (is_loop(input_list.edges[i])) {
+			continue;
+		}
+
+		float weight = input_list.weights[i];
+
+		// Atomically reserve a slot for u and v
+		int64_t write_idx_u = next_write_idx[u].fetch_add(1, std::memory_order_relaxed);
+		g.neighbors[write_idx_u] = v;
+		g.weights[write_idx_u] = weight;
+
+		int64_t write_idx_v = next_write_idx[v].fetch_add(1, std::memory_order_relaxed);
+		g.neighbors[write_idx_v] = u;
+		g.weights[write_idx_v] = weight;
+	}
+
+	g.length = nb_edges;
+	g.nb_nodes = nb_nodes;
+	g.time_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - start).count();
+
+	// On-the-fly per-node deduplication using a marker table
+	int64_t old_nb_edges = nb_edges;
+	int64_t* new_neighbors = (int64_t*)malloc(old_nb_edges * sizeof(int64_t));
+	float* new_weights = (float*)malloc(old_nb_edges * sizeof(float));
+	int64_t* new_slices_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
+
+	std::vector<int64_t> marker(nb_nodes, -1); // marker[v] = position in new_neighbors or -1
+	std::vector<int64_t> touched;			   // list of nodes whose marker was touched, to reset later
+	touched.reserve(64);
+
+	int64_t write_pos = 0;
+	for (int64_t node = 0; node < nb_nodes; node++) {
+		new_slices_idx[node] = write_pos;
+		for_each_neighbor(g, node, [&](int64_t neighbor, float weight) {
+			if (marker[neighbor] == -1) {
+				marker[neighbor] = write_pos;
+				new_neighbors[write_pos] = neighbor;
+				new_weights[write_pos] = weight;
+				touched.push_back(neighbor);
+				write_pos++;
+			}
+			else {
+				// Duplicate neighbor, just keep first weight encountered
+			}
+		});
+		// Reset markers for touched neighbors of this node
+		for (int64_t node : touched) {
+			marker[node] = -1;
+		}
+		touched.clear();
+	}
+
+	new_slices_idx[nb_nodes] = write_pos;
+
+	// replace arrays
+	free(g.neighbors);
+	free(g.weights);
+	free(g.slicing_idx);
+	g.neighbors = new_neighbors;
+	g.weights = new_weights;
+	g.slicing_idx = new_slices_idx;
+	g.length = write_pos;
+
+	// Verification avec vieux algorithme
+	// graph g_ref = from_edge_list_v2(input_list);
+	// print_slicing_idx(g);
+	// print_slicing_idx(g_ref);
+	// for (int64_t node = 0; node < g.nb_nodes; ++node) {
+	// 	print_neighbors_of_node(g, node);
+	// 	print_neighbors_of_node(g_ref, node);
+	// }
+
+	return g;
+}
+
+graph from_edge_list(edge_list input_list) {
+	graph g;
+
+	g = from_edge_list_v2(input_list);
+	printf("From edge list v2: %fms\n", g.time_ms);
+	graph_destroy(g);
+	g = from_edge_list_v2_parallel(input_list);
+	printf("From edge list v2 parallel: %fms\n", g.time_ms);
+	graph_destroy(g);
+
+	g = from_edge_list_v3(input_list);
+	printf("From edge list v3: %fms\n", g.time_ms);
+	graph_destroy(g);
+	g = from_edge_list_v3_parallel(input_list);
+	printf("From edge list v3 parallel: %fms\n", g.time_ms);
 
 	return g;
 }
