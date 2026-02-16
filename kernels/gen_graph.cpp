@@ -489,17 +489,17 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 	printf("Took %f seconds to compute number of nodes\n",
 		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_count).count());
 
-	// Count degrees
+	// Count degrees (thread-safe)
 	auto start_degree = std::chrono::high_resolution_clock::now();
-	std::vector<int64_t> degrees(nb_nodes);
+	std::vector<std::atomic<int64_t>> degrees(nb_nodes);
 #pragma omp parallel for schedule(static)
 	for (int64_t i = 0; i < input_list.length; ++i) {
 		// Skip loops
 		if (is_loop(input_list.edges[i])) {
 			continue;
 		}
-		degrees[input_list.edges[i].v0]++;
-		degrees[input_list.edges[i].v1]++;
+		degrees[input_list.edges[i].v0].fetch_add(1, std::memory_order_relaxed);
+		degrees[input_list.edges[i].v1].fetch_add(1, std::memory_order_relaxed);
 	}
 	printf("Took %f seconds to count degrees\n",
 		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_degree).count());
@@ -518,7 +518,7 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 		int64_t start = tid * chunk;
 		int64_t end = std::min(nb_nodes, (tid + 1) * chunk);
 		for (int64_t i = start; i < end; ++i) {
-			local_sum += degrees[i];
+			local_sum += degrees[i].load(std::memory_order_relaxed);
 		}
 		partial_sums[tid + 1] = local_sum;
 #pragma omp barrier
@@ -534,12 +534,18 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 		int64_t offset = partial_sums[tid];
 		for (int64_t i = start; i < end; ++i) {
 			g.slicing_idx[i] = offset;
-			offset += degrees[i];
+			offset += degrees[i].load(std::memory_order_relaxed);
 		}
 	}
 
-	g.slicing_idx[nb_nodes] = partial_sums.back();
-	int64_t nb_edges = partial_sums.back();
+	// Compute total number of edges as sum of degrees to avoid relying on
+	// partial_sums.back() which may refer to omp_max_threads rather than
+	// the actual number of threads used.
+	int64_t nb_edges = 0;
+	for (int64_t i = 0; i < nb_nodes; ++i) {
+		nb_edges += degrees[i].load(std::memory_order_relaxed);
+	}
+	g.slicing_idx[nb_nodes] = nb_edges;
 
 	// Allocate neighbor arrays
 	g.neighbors = (int64_t*)malloc(nb_edges * sizeof(int64_t));
@@ -642,18 +648,19 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 graph from_edge_list(edge_list input_list) {
 	graph g;
 
-	g = from_edge_list_v2(input_list);
-	printf("From edge list v2: %fms\n", g.time_ms);
-	graph_destroy(g);
-	g = from_edge_list_v2_parallel(input_list);
-	printf("From edge list v2 parallel: %fms\n", g.time_ms);
-	graph_destroy(g);
+	// g = from_edge_list_v2(input_list);
+	// printf("From edge list v2: %fms\n", g.time_ms);
+	// graph_destroy(g);
+	// g = from_edge_list_v2_parallel(input_list);
+	// printf("From edge list v2 parallel: %fms\n", g.time_ms);
+	// graph_destroy(g);
 
-	g = from_edge_list_v3(input_list);
-	printf("From edge list v3: %fms\n", g.time_ms);
-	graph_destroy(g);
+	// g = from_edge_list_v3(input_list);
+	// printf("From edge list v3: %fms\n", g.time_ms);
+	// graph_destroy(g);
+	// g = from_edge_list_v3_parallel(input_list);
+	// printf("From edge list v3 parallel: %fms\n", g.time_ms);
+
 	g = from_edge_list_v3_parallel(input_list);
-	printf("From edge list v3 parallel: %fms\n", g.time_ms);
-
 	return g;
 }
