@@ -1,5 +1,6 @@
 #include "breadth_search.hpp"
 #include "gen_graph.hpp"
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -108,7 +109,7 @@ bfs_result formal_bfs(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	int64_t* parents = (int64_t*)malloc(g.nb_nodes * sizeof(int64_t));
-	memset(parents, -1, g.nb_nodes * (int64_t)sizeof(int64_t));
+	std::fill(parents, parents + g.nb_nodes, -1);
 	parents[source] = source;
 
 	bool* visited = (bool*)malloc(g.nb_nodes * sizeof(bool));
@@ -139,26 +140,72 @@ bfs_result formal_bfs(graph& g, int64_t source) {
 	};
 }
 
-bfs_result top_down_bfs(graph& g, int64_t source) {
+void top_down_step(graph& g, std::unordered_set<int64_t>& frontier, std::unordered_set<int64_t>& next, int64_t*& parents) {
+	for (auto node : frontier) {
+		for_each_neighbor(g, node, [&](int64_t neighbor, float _weight) {
+			if (parents[neighbor] == -1) {
+				parents[neighbor] = node;
+				next.insert(node);
+			}
+		});
+	}
+}
+
+void bottom_up_step(graph& g, std::unordered_set<int64_t>& frontier, std::unordered_set<int64_t>& next, int64_t*& parents) {
+	for (int64_t node = 0; node < g.nb_nodes; node++) {
+		if (parents[node] == -1) {
+			int64_t start = g.slicing_idx[node];
+			int64_t end = g.slicing_idx[node + 1];
+			for (int64_t i = start; i < end; i++) {
+				int64_t neighbor = g.neighbors[i];
+				if (frontier.find(node) != frontier.end()) {
+					parents[node] = neighbor;
+					next.insert(node);
+				}
+				break;
+			}
+		}
+	}
+}
+
+bfs_result bfs_full_top_down(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
+	auto frontier = std::unordered_set<int64_t>{};
+	auto next = std::unordered_set<int64_t>{};
 	int64_t* parents = (int64_t*)malloc(g.nb_nodes * sizeof(int64_t));
-	memset(parents, -1, g.nb_nodes * (int64_t)sizeof(int64_t));
+	std::fill(parents, parents + g.nb_nodes, -1);
 	parents[source] = source;
 
-	std::unordered_set<int64_t> to_explore_now = {source};
-	std::unordered_set<int64_t> to_explore_next = {};
-	while (!to_explore_now.empty()) {
-		for (const auto& node : to_explore_now) {
-			for_each_neighbor(g, node, [&](int64_t neighbor, float _weight) {
-				if (parents[neighbor] == -1) {
-					to_explore_next.insert(neighbor);
-					parents[neighbor] = node;
-				}
-			});
-		}
-		to_explore_now.clear();
-		std::swap(to_explore_next, to_explore_now);
+	while (!frontier.empty()) {
+		top_down_step(g, frontier, next, parents);
+		frontier = next;
+		next.clear();
+	}
+
+	auto end = std::chrono::high_resolution_clock::now();
+	auto time_ms = std::chrono::duration<double, std::milli>(end - start).count();
+
+	return (bfs_result){
+		.parent_array = parents,
+		.teps = 0.0,
+		.time_ms = time_ms,
+	};
+}
+
+bfs_result bfs_full_bottom_up(graph& g, int64_t source) {
+	auto start = std::chrono::high_resolution_clock::now();
+
+	auto frontier = std::unordered_set<int64_t>{};
+	auto next = std::unordered_set<int64_t>{};
+	int64_t* parents = (int64_t*)malloc(g.nb_nodes * sizeof(int64_t));
+	std::fill(parents, parents + g.nb_nodes, -1);
+	parents[source] = source;
+
+	while (!frontier.empty()) {
+		bottom_up_step(g, frontier, next, parents);
+		frontier = next;
+		next.clear();
 	}
 
 	auto end = std::chrono::high_resolution_clock::now();
@@ -172,7 +219,7 @@ bfs_result top_down_bfs(graph& g, int64_t source) {
 }
 
 bfs_result bfs(graph& g, int64_t source) {
-	bfs_result result = formal_bfs(g, source);
+	bfs_result result = bfs_full_bottom_up(g, source);
 	bool is_correct = verify_bfs_result(g, source, result.parent_array);
 	if (!is_correct) {
 		printf("Error in BFS kernel for node %lu\n", source);
