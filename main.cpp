@@ -43,150 +43,154 @@ int main(int argc, char const* argv[]) {
 	const int64_t NB_NODES_TO_TRY = 64;
 	edge_list_destroy(list);
 
-	{
-		double k2_time_ms = 0;
-		double k2_teps = 0;
-		for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-			int64_t node = rand() % g.nb_nodes;
-			if (degree_of_node(g, node) <= 0) {
-				continue;
-			}
-			i++;
+	if (omp_get_max_threads() == 1) {
+		{
+			double k2_time_ms = 0;
+			double k2_teps = 0;
+			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+				int64_t node = rand() % g.nb_nodes;
+				if (degree_of_node(g, node) <= 0) {
+					continue;
+				}
+				i++;
 
-			// Kernel
-			bfs_result kernel2 = bfs_formal(g, node);
-			k2_time_ms += kernel2.time_ms;
-			k2_teps += kernel2.teps;
+				// Kernel
+				bfs_result kernel2 = bfs_formal(g, node);
+				k2_time_ms += kernel2.time_ms;
+				k2_teps += kernel2.teps;
+			}
+			k2_time_ms /= NB_NODES_TO_TRY;
+			k2_teps /= NB_NODES_TO_TRY;
+			printf("BFS Formal - Avg. time: %fms\n", k2_time_ms);
 		}
-		k2_time_ms /= NB_NODES_TO_TRY;
-		k2_teps /= NB_NODES_TO_TRY;
-		printf("BFS Formal - Avg. time: %fms\n", k2_time_ms);
+		{
+			double k2_time_ms = 0;
+			double k2_teps = 0;
+			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+				int64_t node = rand() % g.nb_nodes;
+				if (degree_of_node(g, node) <= 0) {
+					continue;
+				}
+				i++;
+
+				bfs_result kernel2 = bfs_full_top_down(g, node);
+				k2_time_ms += kernel2.time_ms;
+				k2_teps += kernel2.teps;
+			}
+			k2_time_ms /= NB_NODES_TO_TRY;
+			k2_teps /= NB_NODES_TO_TRY;
+			printf("BFS Full Top-Down - Avg. time: %fms\n", k2_time_ms);
+		}
+		{
+			double k2_time_ms = 0;
+			double k2_teps = 0;
+			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+				int64_t node = rand() % g.nb_nodes;
+				if (degree_of_node(g, node) <= 0) {
+					continue;
+				}
+				i++;
+
+				bfs_result kernel2 = bfs_full_bottom_up(g, node);
+				k2_time_ms += kernel2.time_ms;
+				k2_teps += kernel2.teps;
+			}
+			k2_time_ms /= NB_NODES_TO_TRY;
+			k2_teps /= NB_NODES_TO_TRY;
+			printf("BFS Full Bottom-Up - Avg. time: %fms\n", k2_time_ms);
+		}
+		{
+			double k2_time_ms = 0;
+			double k2_teps = 0;
+			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+				int64_t node = rand() % g.nb_nodes;
+				if (degree_of_node(g, node) <= 0) {
+					continue;
+				}
+				i++;
+
+				bfs_result kernel2 = bfs_full_top_down_bitset(g, node);
+				k2_time_ms += kernel2.time_ms;
+				k2_teps += kernel2.teps;
+			}
+			k2_time_ms /= NB_NODES_TO_TRY;
+			k2_teps /= NB_NODES_TO_TRY;
+			printf("BFS Full Top-Down (Bitset) - Avg. time: %fms\n", k2_time_ms);
+		}
+		{
+			double k2_time_ms = 0;
+			double k2_teps = 0;
+			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+				int64_t node = rand() % g.nb_nodes;
+				if (degree_of_node(g, node) <= 0) {
+					continue;
+				}
+				i++;
+
+				bfs_result kernel2 = bfs_full_bottom_up_bitset(g, node);
+				k2_time_ms += kernel2.time_ms;
+				k2_teps += kernel2.teps;
+			}
+			k2_time_ms /= NB_NODES_TO_TRY;
+			k2_teps /= NB_NODES_TO_TRY;
+			printf("BFS Full Bottom-Up (Bitset) - Avg. time: %fms\n", k2_time_ms);
+		}
 	}
-	{
-		double k2_time_ms = 0;
-		double k2_teps = 0;
-		for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-			int64_t node = rand() % g.nb_nodes;
-			if (degree_of_node(g, node) <= 0) {
-				continue;
-			}
-			i++;
+	else {
+		{
+			double k2_time_ms = 0;
+			double k2_teps = 0;
+			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+				int64_t node = rand() % g.nb_nodes;
+				if (degree_of_node(g, node) <= 0) {
+					continue;
+				}
+				i++;
 
-			bfs_result kernel2 = bfs_full_top_down(g, node);
-			k2_time_ms += kernel2.time_ms;
-			k2_teps += kernel2.teps;
-		}
-		k2_time_ms /= NB_NODES_TO_TRY;
-		k2_teps /= NB_NODES_TO_TRY;
-		printf("BFS Full Top-Down - Avg. time: %fms\n", k2_time_ms);
-	}
-	{
-		double k2_time_ms = 0;
-		double k2_teps = 0;
-		for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-			int64_t node = rand() % g.nb_nodes;
-			if (degree_of_node(g, node) <= 0) {
-				continue;
+				bfs_result kernel2 = bfs_full_top_down_parallel_bitset(g, node);
+				k2_time_ms += kernel2.time_ms;
+				k2_teps += kernel2.teps;
 			}
-			i++;
-
-			bfs_result kernel2 = bfs_full_bottom_up(g, node);
-			k2_time_ms += kernel2.time_ms;
-			k2_teps += kernel2.teps;
+			k2_time_ms /= NB_NODES_TO_TRY;
+			k2_teps /= NB_NODES_TO_TRY;
+			printf("BFS Full Top-Down (Parallel Bitset) - Avg. time: %fms\n", k2_time_ms);
 		}
-		k2_time_ms /= NB_NODES_TO_TRY;
-		k2_teps /= NB_NODES_TO_TRY;
-		printf("BFS Full Bottom-Up - Avg. time: %fms\n", k2_time_ms);
-	}
-	{
-		double k2_time_ms = 0;
-		double k2_teps = 0;
-		for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-			int64_t node = rand() % g.nb_nodes;
-			if (degree_of_node(g, node) <= 0) {
-				continue;
+		{
+			double k2_time_ms = 0;
+			double k2_teps = 0;
+			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+				int64_t node = rand() % g.nb_nodes;
+				if (degree_of_node(g, node) <= 0) {
+					continue;
+				}
+				i++;
+
+				bfs_result kernel2 = bfs_full_bottom_up_parallel_bitset(g, node);
+				k2_time_ms += kernel2.time_ms;
+				k2_teps += kernel2.teps;
 			}
-			i++;
-
-			bfs_result kernel2 = bfs_full_top_down_bitset(g, node);
-			k2_time_ms += kernel2.time_ms;
-			k2_teps += kernel2.teps;
+			k2_time_ms /= NB_NODES_TO_TRY;
+			k2_teps /= NB_NODES_TO_TRY;
+			printf("BFS Full Bottom-Up (Parallel Bitset) - Avg. time: %fms\n", k2_time_ms);
 		}
-		k2_time_ms /= NB_NODES_TO_TRY;
-		k2_teps /= NB_NODES_TO_TRY;
-		printf("BFS Full Top-Down (Bitset) - Avg. time: %fms\n", k2_time_ms);
-	}
-	{
-		double k2_time_ms = 0;
-		double k2_teps = 0;
-		for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-			int64_t node = rand() % g.nb_nodes;
-			if (degree_of_node(g, node) <= 0) {
-				continue;
+		{
+			double k2_time_ms = 0;
+			double k2_teps = 0;
+			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+				int64_t node = rand() % g.nb_nodes;
+				if (degree_of_node(g, node) <= 0) {
+					continue;
+				}
+				i++;
+
+				bfs_result kernel2 = bfs_hybrid(g, node);
+				k2_time_ms += kernel2.time_ms;
+				k2_teps += kernel2.teps;
 			}
-			i++;
-
-			bfs_result kernel2 = bfs_full_bottom_up_bitset(g, node);
-			k2_time_ms += kernel2.time_ms;
-			k2_teps += kernel2.teps;
+			k2_time_ms /= NB_NODES_TO_TRY;
+			k2_teps /= NB_NODES_TO_TRY;
+			printf("BFS Hybrid - Avg. time: %fms\n", k2_time_ms);
 		}
-		k2_time_ms /= NB_NODES_TO_TRY;
-		k2_teps /= NB_NODES_TO_TRY;
-		printf("BFS Full Bottom-Up (Bitset) - Avg. time: %fms\n", k2_time_ms);
-	}
-	{
-		double k2_time_ms = 0;
-		double k2_teps = 0;
-		for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-			int64_t node = rand() % g.nb_nodes;
-			if (degree_of_node(g, node) <= 0) {
-				continue;
-			}
-			i++;
-
-			bfs_result kernel2 = bfs_full_top_down_parallel_bitset(g, node);
-			k2_time_ms += kernel2.time_ms;
-			k2_teps += kernel2.teps;
-		}
-		k2_time_ms /= NB_NODES_TO_TRY;
-		k2_teps /= NB_NODES_TO_TRY;
-		printf("BFS Full Top-Down (Parallel Bitset) - Avg. time: %fms\n", k2_time_ms);
-	}
-	{
-		double k2_time_ms = 0;
-		double k2_teps = 0;
-		for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-			int64_t node = rand() % g.nb_nodes;
-			if (degree_of_node(g, node) <= 0) {
-				continue;
-			}
-			i++;
-
-			bfs_result kernel2 = bfs_full_bottom_up_parallel_bitset(g, node);
-			k2_time_ms += kernel2.time_ms;
-			k2_teps += kernel2.teps;
-		}
-		k2_time_ms /= NB_NODES_TO_TRY;
-		k2_teps /= NB_NODES_TO_TRY;
-		printf("BFS Full Bottom-Up (Parallel Bitset) - Avg. time: %fms\n", k2_time_ms);
-	}
-	{
-		double k2_time_ms = 0;
-		double k2_teps = 0;
-		for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-			int64_t node = rand() % g.nb_nodes;
-			if (degree_of_node(g, node) <= 0) {
-				continue;
-			}
-			i++;
-
-			bfs_result kernel2 = bfs_hybrid(g, node);
-			k2_time_ms += kernel2.time_ms;
-			k2_teps += kernel2.teps;
-		}
-		k2_time_ms /= NB_NODES_TO_TRY;
-		k2_teps /= NB_NODES_TO_TRY;
-		printf("BFS Hybrid - Avg. time: %fms\n", k2_time_ms);
 	}
 
 	// double k3_time_ms = 0;
