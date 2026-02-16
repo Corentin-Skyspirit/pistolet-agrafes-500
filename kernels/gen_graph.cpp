@@ -44,7 +44,7 @@ static void print_neighbors_of_node(const graph& graph_obj, int64_t node) {
 	std::cout << '\n';
 }
 
-graph _from_edge_list(edge_list input_list) {
+graph __from_edge_list(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	int64_t max_node = 0;
 	for (int64_t i = 0; i < input_list.length; i++) {
@@ -113,7 +113,11 @@ bool is_loop(const edge& e) {
 	return e.u == e.v;
 }
 
-graph from_edge_list(edge_list input_list) {
+bool is_loop(const packed_edge& e) {
+	return e.v0 == e.v1;
+}
+
+graph _from_edge_list(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	graph g;
 
@@ -199,6 +203,135 @@ graph from_edge_list(edge_list input_list) {
 	// for (int64_t node = 0; node < g.nb_nodes; ++node) {
 	// 	print_neighbors_of_node(g, node);
 	// 	print_neighbors_of_node(g2, node);
+	// }
+
+	return g;
+}
+
+// Fast two-pass CSR builder (counts -> prefix-sum -> fill).
+// - emits undirected edges (u->v and v->u)
+// - O(n + m) time, no global sort
+graph from_edge_list(edge_list input_list) {
+	auto start = std::chrono::high_resolution_clock::now();
+	graph g;
+
+	// Compute number of nodes
+	int64_t max_node = -1;
+	for (int64_t i = 0; i < input_list.length; ++i) {
+		max_node = std::max(max_node, input_list.edges[i].v0);
+		max_node = std::max(max_node, input_list.edges[i].v1);
+	}
+	int64_t nb_nodes = max_node + 1;
+
+	// Count degrees
+	std::vector<int64_t> degrees(nb_nodes);
+	for (int64_t i = 0; i < input_list.length; ++i) {
+		// Skip loops
+		if (is_loop(input_list.edges[i])) {
+			continue;
+		}
+		degrees[input_list.edges[i].v0]++;
+		degrees[input_list.edges[i].v1]++;
+	}
+
+	// Do prefix sum of degrees to get slicing_idx
+	g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
+	int64_t sum = 0;
+	for (int64_t i = 0; i < nb_nodes; ++i) {
+		g.slicing_idx[i] = sum;
+		sum += degrees[i];
+	}
+	g.slicing_idx[nb_nodes] = sum;
+	int64_t nb_edges = sum;
+
+	// Allocate neighbor arrays
+	g.neighbors = (int64_t*)malloc(nb_edges * sizeof(int64_t));
+	g.weights = (float*)malloc(nb_edges * sizeof(float));
+
+	// Fill using per-node cursors
+	std::vector<int64_t> next_write_idx(nb_nodes);
+	for (int64_t i = 0; i < nb_nodes; ++i) {
+		next_write_idx[i] = g.slicing_idx[i];
+	}
+	for (int64_t i = 0; i < input_list.length; ++i) {
+		int64_t u = input_list.edges[i].v0;
+		int64_t v = input_list.edges[i].v1;
+
+		// Skip loops
+		if (is_loop(input_list.edges[i])) {
+			continue;
+		}
+
+		float weight = input_list.weights[i];
+
+		// Write v as a neighbor of u
+		int64_t write_idx_u = next_write_idx[u];
+		g.neighbors[write_idx_u] = v;
+		g.weights[write_idx_u] = weight;
+
+		// Write u as a neighbor of v
+		int64_t write_idx_v = next_write_idx[v];
+		g.neighbors[write_idx_v] = u;
+		g.weights[write_idx_v] = weight;
+
+		next_write_idx[u]++;
+		next_write_idx[v]++;
+	}
+
+	g.length = nb_edges;
+	g.nb_nodes = nb_nodes;
+	g.time_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - start).count();
+
+	// On-the-fly per-node deduplication using a marker table
+	int64_t old_nb_edges = nb_edges;
+	int64_t* new_neighbors = (int64_t*)malloc(old_nb_edges * sizeof(int64_t));
+	float* new_weights = (float*)malloc(old_nb_edges * sizeof(float));
+	int64_t* new_slices_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
+
+	std::vector<int64_t> marker(nb_nodes, -1); // marker[v] = position in new_neighbors or -1
+	std::vector<int64_t> touched;			   // list of nodes whose marker was touched, to reset later
+	touched.reserve(64);
+
+	int64_t write_pos = 0;
+	for (int64_t node = 0; node < nb_nodes; node++) {
+		new_slices_idx[node] = write_pos;
+		for_each_neighbor(g, node, [&](int64_t neighbor, float weight) {
+			if (marker[neighbor] == -1) {
+				marker[neighbor] = write_pos;
+				new_neighbors[write_pos] = neighbor;
+				new_weights[write_pos] = weight;
+				touched.push_back(neighbor);
+				write_pos++;
+			}
+			else {
+				// Duplicate neighbor, just keep first weight encountered
+			}
+		});
+		// Reset markers for touched neighbors of this node
+		for (int64_t node : touched) {
+			marker[node] = -1;
+		}
+		touched.clear();
+	}
+
+	new_slices_idx[nb_nodes] = write_pos;
+
+	// replace arrays
+	free(g.neighbors);
+	free(g.weights);
+	free(g.slicing_idx);
+	g.neighbors = new_neighbors;
+	g.weights = new_weights;
+	g.slicing_idx = new_slices_idx;
+	g.length = write_pos;
+
+	// Verification avec vieux algorithme
+	// graph g_ref = _from_edge_list(input_list);
+	// print_slicing_idx(g);
+	// print_slicing_idx(g_ref);
+	// for (int64_t node = 0; node < g.nb_nodes; ++node) {
+	// 	print_neighbors_of_node(g, node);
+	// 	print_neighbors_of_node(g_ref, node);
 	// }
 
 	return g;
