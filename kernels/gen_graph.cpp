@@ -652,8 +652,8 @@ graph from_edge_list(edge_list input_list) {
 	// g = from_edge_list_v3(input_list);
 	// printf("From edge list v3: %fms\n", g.time_ms);
 	// graph_destroy(g);
-	g = from_edge_list_v3_parallel(input_list);
-	printf("From edge list v3 parallel: %fms\n", g.time_ms);
+	// g = from_edge_list_v3_parallel(input_list);
+	// printf("From edge list v3 parallel: %fms\n", g.time_ms);
 
 	g = from_edge_list_v3_parallel(input_list);
 	return g;

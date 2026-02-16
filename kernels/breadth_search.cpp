@@ -227,121 +227,12 @@ static bfs_result bfs_full_bottom_up(graph& g, int64_t source) {
 	};
 }
 
-// Hybrid direction-optimizing BFS using unordered_set frontier.
-// Switches between top-down and bottom-up using a simple heuristic based
-// on the number of edges to check from the frontier (m_f) and from
-// unexplored vertices (m_u). Constants C_TB and C_BT tune switching.
-static bfs_result bfs_hybrid_unordered_set(graph& g, int64_t source) {
-	auto start = std::chrono::high_resolution_clock::now();
-
-	// start with unordered_set frontier
-	auto frontier_set = std::unordered_set<int64_t>{};
-	frontier_set.insert(source);
-	auto next_set = std::unordered_set<int64_t>{};
-
-	// atomic bitset frontiers (created once and reused for conversions)
-	AtomicBitSet frontier_atomic(g.nb_nodes);
-	AtomicBitSet next_atomic(g.nb_nodes);
-
-	int64_t* parents = (int64_t*)malloc(g.nb_nodes * sizeof(int64_t));
-	std::fill(parents, parents + g.nb_nodes, -1);
-	parents[source] = source;
-
-	bool using_set = true;
-	bool top_down = true;
-	const double C_TB = 10.0; // threshold for switching top->bottom
-	const double C_BT = 40.0; // threshold for switching bottom->top
-
-	while ((using_set && !frontier_set.empty()) || (!using_set && !frontier_atomic.empty())) {
-		// compute m_f = sum degrees of frontier
-		uint64_t m_f = 0;
-		if (using_set) {
-			for (auto v : frontier_set) {
-				m_f += (uint64_t)(g.slicing_idx[v + 1] - g.slicing_idx[v]);
-			}
-		}
-		else {
-			frontier_atomic.for_each_set([&](int64_t v) { m_f += (uint64_t)(g.slicing_idx[v + 1] - g.slicing_idx[v]); });
-		}
-
-		// compute m_u = sum degrees of unexplored vertices
-		uint64_t m_u = 0;
-		for (int64_t v = 0; v < g.nb_nodes; ++v) {
-			if (parents[v] == -1) {
-				m_u += (uint64_t)(g.slicing_idx[v + 1] - g.slicing_idx[v]);
-			}
-		}
-
-		if (top_down) {
-			if (m_f > m_u / C_TB) {
-				top_down = false;
-			}
-		}
-		else {
-			if (m_f < m_u / C_BT) {
-				top_down = true;
-			}
-		}
-
-		if (top_down) {
-			// ensure we have set representation
-			if (!using_set) {
-				frontier_set.clear();
-				frontier_atomic.for_each_set([&](int64_t v) { frontier_set.insert(v); });
-				using_set = true;
-			}
-			top_down_step(g, frontier_set, next_set, parents);
-
-			frontier_set = std::move(next_set);
-			next_set.clear();
-		}
-		else {
-			// ensure we have atomic bitset representation
-			if (using_set) {
-				frontier_atomic.clear();
-				next_atomic.clear();
-				for (auto v : frontier_set)
-					frontier_atomic.insert(v);
-				using_set = false;
-			}
-
-			// bottom-up step using atomic frontier, but regular parents array
-			for (int64_t node = 0; node < g.nb_nodes; node++) {
-				if (parents[node] == -1) {
-					int64_t start = g.slicing_idx[node];
-					int64_t end = g.slicing_idx[node + 1];
-					for (int64_t i = start; i < end; i++) {
-						int64_t neighbor = g.neighbors[i];
-						if (frontier_atomic.contains(neighbor)) {
-							parents[node] = neighbor;
-							next_atomic.insert(node);
-							break;
-						}
-					}
-				}
-			}
-
-			atomic_bitset_swap(frontier_atomic, next_atomic);
-			next_atomic.clear();
-		}
-	}
-
-	auto end = std::chrono::high_resolution_clock::now();
-	auto time_ms = std::chrono::duration<double, std::milli>(end - start).count();
-
-	return (bfs_result){
-		.parent_array = parents,
-		.teps = 0.0,
-		.time_ms = time_ms,
-	};
-}
-
 ////////////////////////////////////////////////////////
 //////////// BITSET FRONTIER IMPLEMENTATION ////////////
 ////////////////////////////////////////////////////////
 
 static void top_down_step_bitset(graph& g, BitSet& frontier, BitSet& next, int64_t*& parents) {
-	frontier.for_each_set([&](int64_t node) {
+	frontier.for_each([&](int64_t node) {
 		for_each_neighbor(g, node, [&](int64_t neighbor, float _weight) {
 			if (parents[neighbor] == -1) {
 				parents[neighbor] = node;
@@ -423,7 +314,7 @@ static bfs_result bfs_full_bottom_up_bitset(graph& g, int64_t source) {
 ////////////////////////////////////////////////////////
 
 static void top_down_step_atomic_bitset(graph& g, AtomicBitSet& frontier, AtomicBitSet& next, std::atomic<int64_t>*& parents) {
-	frontier.parallel_for_each_set([&](int64_t node) {
+	frontier.parallel_for_each([&](int64_t node) {
 		for_each_neighbor(g, node, [&](int64_t neighbor, float _weight) {
 			if (parents[neighbor].load(std::memory_order_acquire) == -1) {
 				parents[neighbor].store(node, std::memory_order_release);
@@ -520,6 +411,135 @@ static bfs_result bfs_full_bottom_up_atomic_bitset(graph& g, int64_t source) {
 	};
 }
 
+typedef struct hybrid_set {
+	enum FrontierType : uint8_t {
+		UNORDERED_SET,
+		BITSET,
+	} currently_using;
+
+	std::unordered_set<int64_t> unordered_set;
+	AtomicBitSet bitset;
+
+	hybrid_set(int64_t nb_nodes) : currently_using(UNORDERED_SET), unordered_set(), bitset(nb_nodes) {}
+
+	std::unordered_set<int64_t>& as_unordered_set() {
+		if (this->currently_using == FrontierType::UNORDERED_SET) {
+			return unordered_set;
+		}
+		else {
+			// convert bitset to unordered_set
+			unordered_set.clear();
+			bitset.for_each([&](int64_t v) { unordered_set.insert(v); });
+			this->currently_using = FrontierType::UNORDERED_SET;
+			return unordered_set;
+		}
+	}
+
+	AtomicBitSet& as_bitset() {
+		if (this->currently_using == FrontierType::BITSET) {
+			return bitset;
+		}
+		else {
+			// convert unordered_set to bitset
+			bitset.clear();
+			for (auto v : unordered_set) {
+				bitset.insert(v);
+			}
+			this->currently_using = FrontierType::BITSET;
+			return bitset;
+		}
+	}
+
+	bool empty() const {
+		if (this->currently_using == FrontierType::UNORDERED_SET) {
+			return unordered_set.empty();
+		}
+		else {
+			return bitset.empty();
+		}
+	}
+
+	int64_t sum_of_degrees(const graph& g) const {
+		int64_t sum = 0;
+		if (this->currently_using == FrontierType::UNORDERED_SET) {
+			for (auto v : unordered_set) {
+				sum += (int64_t)(g.slicing_idx[v + 1] - g.slicing_idx[v]);
+			}
+		}
+		else {
+			bitset.for_each([&](int64_t v) { sum += (int64_t)(g.slicing_idx[v + 1] - g.slicing_idx[v]); });
+		}
+		return sum;
+	}
+} hybrid_set;
+
+// Hybrid direction-optimizing BFS using bitset frontier.
+// Switches between top-down and bottom-up using a simple heuristic based
+// on the number of edges to check from the frontier (m_f) and from
+// unexplored vertices (m_u). Constants C_TB and C_BT tune switching.
+static bfs_result bfs_hybrid(graph& g, int64_t source) {
+	auto start = std::chrono::high_resolution_clock::now();
+
+	hybrid_set frontier(g.nb_nodes);
+	frontier.as_unordered_set().insert(source);
+
+	hybrid_set next(g.nb_nodes);
+
+	// Same pointers for both implementations to simplify switching and avoid copying when not needed
+	int64_t* parents = (int64_t*)malloc(g.nb_nodes * sizeof(int64_t));
+	std::atomic<int64_t>* parents_atomic = (std::atomic<int64_t>*)parents;
+	std::fill(parents, parents + g.nb_nodes, -1);
+	parents[source] = source;
+
+	bool top_down = true;
+	const double C_TB = 10.0; // threshold for switching top->bottom
+	const double C_BT = 40.0; // threshold for switching bottom->top
+
+	while (!frontier.empty()) {
+		// compute m_f = sum degrees of frontier
+		uint64_t m_f = frontier.sum_of_degrees(g);
+
+		// compute m_u = sum degrees of unexplored vertices
+		uint64_t m_u = 0;
+		for (int64_t v = 0; v < g.nb_nodes; ++v) {
+			if (parents[v] == -1) {
+				m_u += (uint64_t)(g.slicing_idx[v + 1] - g.slicing_idx[v]);
+			}
+		}
+
+		if (top_down) {
+			if (m_f > m_u / C_TB) {
+				top_down = false;
+			}
+		}
+		else {
+			if (m_f < m_u / C_BT) {
+				top_down = true;
+			}
+		}
+
+		if (top_down) {
+			top_down_step(g, frontier.as_unordered_set(), next.as_unordered_set(), parents);
+			frontier.as_unordered_set() = std::move(next.as_unordered_set());
+			next.as_unordered_set().clear();
+		}
+		else {
+			bottom_up_step_atomic_bitset(g, frontier.as_bitset(), next.as_bitset(), parents_atomic);
+			atomic_bitset_swap(frontier.as_bitset(), next.as_bitset());
+			next.as_bitset().clear();
+		}
+	}
+
+	auto end = std::chrono::high_resolution_clock::now();
+	auto time_ms = std::chrono::duration<double, std::milli>(end - start).count();
+
+	return (bfs_result){
+		.parent_array = parents,
+		.teps = 0.0,
+		.time_ms = time_ms,
+	};
+}
+
 bfs_result bfs(graph& g, int64_t source) {
 	// bfs_result result = bfs_full_bottom_up(g, source);
 	// bool is_correct = verify_bfs_result(g, source, result.parent_array);
@@ -539,12 +559,12 @@ bfs_result bfs(graph& g, int64_t source) {
 	}
 
 	{
-		result = bfs_hybrid_unordered_set(g, source);
+		result = bfs_hybrid(g, source);
 		bool is_correct = verify_bfs_result(g, source, result.parent_array);
 		if (!is_correct) {
 			printf("Error in hybrid BFS kernel for node %lu\n", source);
 		}
-		printf("Hybrid (unordered_set) BFS: time = %.2f ms\n", result.time_ms);
+		printf("Hybrid BFS: time = %.2f ms\n", result.time_ms);
 	}
 
 	{

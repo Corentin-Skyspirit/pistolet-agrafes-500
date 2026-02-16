@@ -66,7 +66,7 @@ struct BitSet {
 		return true;
 	}
 
-	template <typename Func> void for_each_set(Func&& func) const {
+	template <typename Func> void for_each(Func&& func) const {
 		for (size_t w = 0; w < this->words; ++w) {
 			uint64_t word = this->data[w];
 			while (word) {
@@ -168,7 +168,7 @@ struct AtomicBitSet {
 
 	// Iterate over a snapshot of set bits and call `func(int64_t idx)`.
 	// The callable `func` must accept one int64_t parameter.
-	template <typename Func> void for_each_set(Func&& func) const {
+	template <typename Func> void for_each(Func&& func) const {
 		for (size_t w = 0; w < words; ++w) {
 			uint64_t word = data[w].load(std::memory_order_acquire);
 			while (word) {
@@ -183,7 +183,7 @@ struct AtomicBitSet {
 		}
 	}
 
-	template <typename Func> void parallel_for_each_set(Func&& func) const {
+	template <typename Func> void parallel_for_each(Func&& func) const {
 #pragma omp parallel for schedule(guided)
 		for (size_t w = 0; w < words; ++w) {
 			uint64_t word = data[w].load(std::memory_order_acquire);
