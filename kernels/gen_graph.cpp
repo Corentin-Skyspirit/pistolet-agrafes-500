@@ -162,7 +162,7 @@ graph from_edge_list_v2(edge_list input_list) {
 
 	auto start_build = std::chrono::high_resolution_clock::now();
 	int64_t nb_nodes = edges[(input_list.length * 2) - 1].u + 1;
-	g.slicing_idx = (int64_t*)malloc(nb_nodes * sizeof(int64_t));
+	g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
 	g.neighbors = (int64_t*)malloc(2 * input_list.length * sizeof(int64_t));
 	g.weights = (float*)malloc(2 * input_list.length * sizeof(float));
 
@@ -409,7 +409,7 @@ graph from_edge_list_v2_parallel(edge_list input_list) {
 
 	auto start_build = std::chrono::high_resolution_clock::now();
 	int64_t nb_nodes = edges[(input_list.length * 2) - 1].u + 1;
-	g.slicing_idx = (int64_t*)malloc(nb_nodes * sizeof(int64_t));
+	g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
 	g.neighbors = (int64_t*)malloc(2 * input_list.length * sizeof(int64_t));
 	g.weights = (float*)malloc(2 * input_list.length * sizeof(float));
 
