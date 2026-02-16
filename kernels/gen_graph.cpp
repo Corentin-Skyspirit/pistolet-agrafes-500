@@ -131,6 +131,7 @@ graph from_edge_list_v2(edge_list input_list) {
 	graph g;
 
 	edge* edges = (edge*)malloc(sizeof(edge) * 2 * input_list.length);
+	auto original_edges_ptr = edges;
 
 	// Duplicate the edges
 	auto start_duplication = std::chrono::high_resolution_clock::now();
@@ -222,6 +223,8 @@ graph from_edge_list_v2(edge_list input_list) {
 	// 	print_neighbors_of_node(g, node);
 	// 	print_neighbors_of_node(g2, node);
 	// }
+
+	free(original_edges_ptr);
 
 	return g;
 }
@@ -377,9 +380,10 @@ graph from_edge_list_v2_parallel(edge_list input_list) {
 	graph g;
 
 	edge* edges = (edge*)malloc(sizeof(edge) * 2 * input_list.length);
+	auto original_edges_ptr = edges;
 
 	auto start_duplication = std::chrono::high_resolution_clock::now();
-#pragma omp parallel for schedule(static)
+	// #pragma omp parallel for schedule(static) // <- Turned out to be way worse in parallel, maybe due to false sharing.
 	// Duplicate the edges
 	for (size_t i = 0; i < input_list.length; i++) {
 		edges[2 * i] = (edge){
@@ -470,6 +474,8 @@ graph from_edge_list_v2_parallel(edge_list input_list) {
 	// 	print_neighbors_of_node(g2, node);
 	// }
 
+	free(original_edges_ptr);
+
 	return g;
 }
 
@@ -489,57 +495,84 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 	printf("Took %f seconds to compute number of nodes\n",
 		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_count).count());
 
-	// Count degrees (thread-safe)
+	// Count degrees (parallel)
+	// 	auto start_degree = std::chrono::high_resolution_clock::now();
+	// 	std::vector<std::atomic<int64_t>> degrees(nb_nodes);
+	// #pragma omp parallel for schedule(static)
+	// 	for (int64_t i = 0; i < input_list.length; ++i) {
+	// 		// Skip loops
+	// 		if (is_loop(input_list.edges[i])) {
+	// 			continue;
+	// 		}
+	// 		degrees[input_list.edges[i].v0].fetch_add(1, std::memory_order_relaxed);
+	// 		degrees[input_list.edges[i].v1].fetch_add(1, std::memory_order_relaxed);
+	// 	}
+
+	// Count degrees (not parallel) -> was too slow because of atomics or something
+	// we also need to remove prefix sum in parallel because it counted on the atomics
 	auto start_degree = std::chrono::high_resolution_clock::now();
-	std::vector<std::atomic<int64_t>> degrees(nb_nodes);
-#pragma omp parallel for schedule(static)
+	std::vector<int64_t> degrees(nb_nodes, 0);
 	for (int64_t i = 0; i < input_list.length; ++i) {
 		// Skip loops
 		if (is_loop(input_list.edges[i])) {
 			continue;
 		}
-		degrees[input_list.edges[i].v0].fetch_add(1, std::memory_order_relaxed);
-		degrees[input_list.edges[i].v1].fetch_add(1, std::memory_order_relaxed);
+		degrees[input_list.edges[i].v0]++;
+		degrees[input_list.edges[i].v1]++;
 	}
 	printf("Took %f seconds to count degrees\n",
 		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_degree).count());
 
 	// Do prefix sum of degrees to get slicing_idx (parallel scan)
-	g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
-	std::vector<int64_t> partial_sums(omp_get_max_threads() + 1, 0);
+	auto prefix_sum_start = std::chrono::high_resolution_clock::now();
+
+	// g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
+	// std::vector<int64_t> partial_sums(omp_get_max_threads() + 1, 0);
 
 	// Compute partial sums in parallel
-#pragma omp parallel
-	{
-		int tid = omp_get_thread_num();
-		int nthreads = omp_get_num_threads();
-		int64_t local_sum = 0;
-		int64_t chunk = (nb_nodes + nthreads - 1) / nthreads;
-		int64_t start = tid * chunk;
-		int64_t end = std::min(nb_nodes, (tid + 1) * chunk);
-		for (int64_t i = start; i < end; ++i) {
-			local_sum += degrees[i].load(std::memory_order_relaxed);
-		}
-		partial_sums[tid + 1] = local_sum;
-#pragma omp barrier
-		// Prefix sum of partial_sums (single thread)
-#pragma omp single
-		{
-			for (int i = 1; i <= nthreads; ++i) {
-				partial_sums[i] += partial_sums[i - 1];
-			}
-		}
-#pragma omp barrier
-		// Fill slicing_idx in parallel
-		int64_t offset = partial_sums[tid];
-		for (int64_t i = start; i < end; ++i) {
-			g.slicing_idx[i] = offset;
-			offset += degrees[i].load(std::memory_order_relaxed);
-		}
-	}
+	// #pragma omp parallel
+	// 	{
+	// 		int tid = omp_get_thread_num();
+	// 		int nthreads = omp_get_num_threads();
+	// 		int64_t local_sum = 0;
+	// 		int64_t chunk = (nb_nodes + nthreads - 1) / nthreads;
+	// 		int64_t start = tid * chunk;
+	// 		int64_t end = std::min(nb_nodes, (tid + 1) * chunk);
+	// 		for (int64_t i = start; i < end; ++i) {
+	// 			local_sum += degrees[i].load(std::memory_order_relaxed);
+	// 		}
+	// 		partial_sums[tid + 1] = local_sum;
+	// #pragma omp barrier
+	// 		// Prefix sum of partial_sums (single thread)
+	// #pragma omp single
+	// 		{
+	// 			for (int i = 1; i <= nthreads; ++i) {
+	// 				partial_sums[i] += partial_sums[i - 1];
+	// 			}
+	// 		}
+	// #pragma omp barrier
+	// 		// Fill slicing_idx in parallel
+	// 		int64_t offset = partial_sums[tid];
+	// 		for (int64_t i = start; i < end; ++i) {
+	// 			g.slicing_idx[i] = offset;
+	// 			offset += degrees[i].load(std::memory_order_relaxed);
+	// 		}
+	// 	}
 
-	g.slicing_idx[nb_nodes] = partial_sums.back();
-	int64_t nb_edges = partial_sums.back();
+	// 	g.slicing_idx[nb_nodes] = partial_sums.back();
+	// 	int64_t nb_edges = partial_sums.back();
+
+	// Prefix sum (sequential)
+	g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
+	int64_t sum = 0;
+	for (int64_t i = 0; i < nb_nodes; ++i) {
+		g.slicing_idx[i] = sum;
+		sum += degrees[i];
+	}
+	g.slicing_idx[nb_nodes] = sum;
+	int64_t nb_edges = sum;
+	printf("Took %f seconds to compute prefix sum\n",
+		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - prefix_sum_start).count());
 
 	// Allocate neighbor arrays
 	g.neighbors = (int64_t*)malloc(nb_edges * sizeof(int64_t));
@@ -638,23 +671,32 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 
 	return g;
 }
+#include <omp.h>
 
-graph from_edge_list(edge_list input_list) {
+void from_edge_list_try_all(edge_list input_list) {
 	graph g;
 
-	// g = from_edge_list_v2(input_list);
-	// printf("From edge list v2: %fms\n", g.time_ms);
-	// graph_destroy(g);
-	// g = from_edge_list_v2_parallel(input_list);
-	// printf("From edge list v2 parallel: %fms\n", g.time_ms);
-	// graph_destroy(g);
+	// No need to repeat the sequential experiment
+	if (omp_get_max_threads() == 1) {
+		g = from_edge_list_v2(input_list);
+		printf("From edge list v2: %fms\n", g.time_ms);
+		graph_destroy(g);
 
-	// g = from_edge_list_v3(input_list);
-	// printf("From edge list v3: %fms\n", g.time_ms);
-	// graph_destroy(g);
-	// g = from_edge_list_v3_parallel(input_list);
-	// printf("From edge list v3 parallel: %fms\n", g.time_ms);
+		g = from_edge_list_v3(input_list);
+		printf("From edge list v3: %fms\n", g.time_ms);
+		graph_destroy(g);
+	}
+	else {
+		g = from_edge_list_v2_parallel(input_list);
+		printf("From edge list v2 parallel: %fms\n", g.time_ms);
+		graph_destroy(g);
 
-	g = from_edge_list_v3_parallel(input_list);
-	return g;
+		g = from_edge_list_v3_parallel(input_list);
+		printf("From edge list v3 parallel: %fms\n", g.time_ms);
+		graph_destroy(g);
+	}
+}
+
+graph from_edge_list(edge_list input_list) {
+	return from_edge_list_v3_parallel(input_list);
 }

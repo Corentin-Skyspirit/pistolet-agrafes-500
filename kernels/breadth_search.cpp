@@ -105,7 +105,7 @@ static bool verify_bfs_result(const graph& g, int64_t source, int64_t* parents) 
 	return true;
 }
 
-static bfs_result formal_bfs(graph& g, int64_t source) {
+bfs_result bfs_formal(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	int64_t* parents = (int64_t*)malloc(g.nb_nodes * sizeof(int64_t));
@@ -175,7 +175,7 @@ static void bottom_up_step(graph& g, std::unordered_set<int64_t>& frontier, std:
 	}
 }
 
-static bfs_result bfs_full_top_down(graph& g, int64_t source) {
+bfs_result bfs_full_top_down(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	auto frontier = std::unordered_set<int64_t>{};
@@ -201,7 +201,7 @@ static bfs_result bfs_full_top_down(graph& g, int64_t source) {
 	};
 }
 
-static bfs_result bfs_full_bottom_up(graph& g, int64_t source) {
+bfs_result bfs_full_bottom_up(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	auto frontier = std::unordered_set<int64_t>{};
@@ -259,7 +259,7 @@ static void bottom_up_step_bitset(graph& g, BitSet& frontier, BitSet& next, int6
 	}
 }
 
-static bfs_result bfs_full_top_down_bitset(graph& g, int64_t source) {
+bfs_result bfs_full_top_down_bitset(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	auto frontier = BitSet(g.nb_nodes);
@@ -284,7 +284,7 @@ static bfs_result bfs_full_top_down_bitset(graph& g, int64_t source) {
 	};
 }
 
-static bfs_result bfs_full_bottom_up_bitset(graph& g, int64_t source) {
+bfs_result bfs_full_bottom_up_bitset(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	auto frontier = BitSet(g.nb_nodes);
@@ -313,7 +313,7 @@ static bfs_result bfs_full_bottom_up_bitset(graph& g, int64_t source) {
 /////// PARALLEL BITSET FRONTIER IMPLEMENTATION ////////
 ////////////////////////////////////////////////////////
 
-static void top_down_step_atomic_bitset(graph& g, AtomicBitSet& frontier, AtomicBitSet& next, std::atomic<int64_t>*& parents) {
+static void top_down_step_parallel_bitset(graph& g, AtomicBitSet& frontier, AtomicBitSet& next, std::atomic<int64_t>*& parents) {
 	frontier.parallel_for_each([&](int64_t node) {
 		for_each_neighbor(g, node, [&](int64_t neighbor, float _weight) {
 			if (parents[neighbor].load(std::memory_order_acquire) == -1) {
@@ -324,7 +324,7 @@ static void top_down_step_atomic_bitset(graph& g, AtomicBitSet& frontier, Atomic
 	});
 }
 
-static void bottom_up_step_atomic_bitset(graph& g, AtomicBitSet& frontier, AtomicBitSet& next, std::atomic<int64_t>*& parents) {
+static void bottom_up_step_parallel_bitset(graph& g, AtomicBitSet& frontier, AtomicBitSet& next, std::atomic<int64_t>*& parents) {
 #pragma omp parallel for schedule(dynamic, 1024)
 	for (int64_t node = 0; node < g.nb_nodes; node++) {
 		if (parents[node].load(std::memory_order_acquire) == -1) {
@@ -342,7 +342,7 @@ static void bottom_up_step_atomic_bitset(graph& g, AtomicBitSet& frontier, Atomi
 	}
 }
 
-static bfs_result bfs_full_top_down_atomic_bitset(graph& g, int64_t source) {
+bfs_result bfs_full_top_down_parallel_bitset(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	auto frontier = AtomicBitSet(g.nb_nodes);
@@ -354,7 +354,7 @@ static bfs_result bfs_full_top_down_atomic_bitset(graph& g, int64_t source) {
 	parents[source].store(source, std::memory_order_release);
 	frontier.insert(source);
 	while (!frontier.empty()) {
-		top_down_step_atomic_bitset(g, frontier, next, parents);
+		top_down_step_parallel_bitset(g, frontier, next, parents);
 		atomic_bitset_swap(frontier, next);
 		next.clear();
 	}
@@ -377,7 +377,7 @@ static bfs_result bfs_full_top_down_atomic_bitset(graph& g, int64_t source) {
 	};
 }
 
-static bfs_result bfs_full_bottom_up_atomic_bitset(graph& g, int64_t source) {
+bfs_result bfs_full_bottom_up_parallel_bitset(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	auto frontier = AtomicBitSet(g.nb_nodes);
@@ -389,7 +389,7 @@ static bfs_result bfs_full_bottom_up_atomic_bitset(graph& g, int64_t source) {
 	parents[source].store(source, std::memory_order_release);
 	frontier.insert(source);
 	while (!frontier.empty()) {
-		bottom_up_step_atomic_bitset(g, frontier, next, parents);
+		bottom_up_step_parallel_bitset(g, frontier, next, parents);
 		atomic_bitset_swap(frontier, next);
 		next.clear();
 	}
@@ -477,7 +477,7 @@ typedef struct hybrid_set {
 // Switches between top-down and bottom-up using a simple heuristic based
 // on the number of edges to check from the frontier (m_f) and from
 // unexplored vertices (m_u). Constants C_TB and C_BT tune switching.
-static bfs_result bfs_hybrid(graph& g, int64_t source) {
+bfs_result bfs_hybrid(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	hybrid_set frontier(g.nb_nodes);
@@ -524,7 +524,7 @@ static bfs_result bfs_hybrid(graph& g, int64_t source) {
 			next.as_unordered_set().clear();
 		}
 		else {
-			bottom_up_step_atomic_bitset(g, frontier.as_bitset(), next.as_bitset(), parents_atomic);
+			bottom_up_step_parallel_bitset(g, frontier.as_bitset(), next.as_bitset(), parents_atomic);
 			atomic_bitset_swap(frontier.as_bitset(), next.as_bitset());
 			next.as_bitset().clear();
 		}
@@ -550,7 +550,7 @@ bfs_result bfs(graph& g, int64_t source) {
 	bfs_result result;
 
 	{
-		result = formal_bfs(g, source);
+		result = bfs_formal(g, source);
 		bool is_correct = verify_bfs_result(g, source, result.parent_array);
 		if (!is_correct) {
 			printf("Error in formal BFS kernel for node %lu\n", source);
@@ -604,7 +604,7 @@ bfs_result bfs(graph& g, int64_t source) {
 	}
 
 	{
-		result = bfs_full_bottom_up_atomic_bitset(g, source);
+		result = bfs_full_bottom_up_parallel_bitset(g, source);
 		bool is_correct = verify_bfs_result(g, source, result.parent_array);
 		if (!is_correct) {
 			printf("Error in bottom-up atomic bitset BFS kernel for node %lu\n", source);
@@ -613,7 +613,7 @@ bfs_result bfs(graph& g, int64_t source) {
 	}
 
 	{
-		result = bfs_full_top_down_atomic_bitset(g, source);
+		result = bfs_full_top_down_parallel_bitset(g, source);
 		bool is_correct = verify_bfs_result(g, source, result.parent_array);
 		if (!is_correct) {
 			printf("Error in top-down atomic bitset BFS kernel for node %lu\n", source);

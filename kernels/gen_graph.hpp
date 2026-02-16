@@ -15,6 +15,10 @@ typedef struct {
 
 graph from_edge_list(edge_list input_list);
 
+void graph_destroy(graph& g);
+
+void from_edge_list_try_all(edge_list input_list);
+
 // Utilities
 template <typename F> static inline void for_each_neighbor(const graph& g, int64_t node, F f) {
 	int64_t start = g.slicing_idx[node];
