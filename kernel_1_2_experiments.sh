@@ -12,17 +12,17 @@
 
 romeo_load_x64cpu_env
 
-mkdir -p ~/runs/$USER/$SLURM_JOBID/
-cp -r $SLURM_SUBMIT_DIR/ ~/runs/$USER/$SLURM_JOBID/
-cd ~/runs/$USER/$SLURM_JOBID/pistolet-agrafes-500
-spack load mpich
-make -B
+spack load mpich tbb
 
+TBB_DIR=$(spack location -i tbb 2>/dev/null || spack location -i intel-tbb 2>/dev/null)
+export CPPFLAGS="-I$TBB_DIR/include"
+export CXXFLAGS="-I$TBB_DIR/include"
+export LDFLAGS="-L$TBB_DIR/lib -ltbb"
+make -B -j$(nproc) CPPFLAGS="$CPPFLAGS" CXXFLAGS="$CXXFLAGS" LDFLAGS="$LDFLAGS"
 
 # Run `./main` with different OMP thread counts and save per-run logs
 THREADS_LIST="1 2 4 8 16 32 64"
 for t in $THREADS_LIST; do
-	echo "=== Running with $t threads ===" | tee -a job.$SLURM_JOBID.out
-	OMP_NUM_THREADS=$t srun -n1 -c $t ./main \
-		> runs_${SLURM_JOBID}_threads_${t}.out 2> runs_${SLURM_JOBID}_threads_${t}.err
+        echo "=== Running with $t threads ===" | tee -a job.$SLURM_JOBID.out
+        OMP_NUM_THREADS=$t srun -n1 -c $t ./main
 done
