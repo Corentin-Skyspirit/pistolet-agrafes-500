@@ -8,7 +8,7 @@
 
 int main(int argc, char const* argv[]) {
 	printf("Hello world\n");
-	edge_list list = generate_graph(20, 7);
+	edge_list list = generate_graph(10, 7);
 	// edge_list list = generate_graph(5, 2);
 	// print_edge_list(&list);
 	graph g = from_edge_list(list); // Kernel 1 compute
@@ -55,6 +55,8 @@ int main(int argc, char const* argv[]) {
 
 	double k3_time_ms = 0;
 	double k3_teps = 0;
+	double k3_para_time_ms = 0;
+	double k3_para_teps = 0;
 	for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
 		int64_t node = rand() % g.nb_nodes;
 		if (degree_of_node(g, node) <= 0) {
@@ -66,6 +68,12 @@ int main(int argc, char const* argv[]) {
 		shortest_path kernel3 = sssp(g, node);
 		k3_time_ms += kernel3.time_ms;
 		k3_teps += kernel3.teps;
+		shortest_path_destroy(kernel3);
+
+		shortest_path kernel3_para = sssp_parallel(g, node);
+		k3_para_time_ms += kernel3_para.time_ms;
+		k3_para_teps += kernel3_para.teps;
+		shortest_path_destroy(kernel3_para);
 
 		if (argv[1] != nullptr) {
 			for (int64_t i = 0; i < g.nb_nodes; i++) {
@@ -75,7 +83,10 @@ int main(int argc, char const* argv[]) {
 	}
 	k3_time_ms /= NB_NODES_TO_TRY;
 	k3_teps /= NB_NODES_TO_TRY;
+	k3_para_time_ms /= NB_NODES_TO_TRY;
+	k3_para_teps /= NB_NODES_TO_TRY;
 	std::cout << "SSSP : time avg = " << k3_time_ms << "ms, teps avg = " << k3_teps << "teps" << std::endl;
+	std::cout << "Parallel SSSP : time avg = " << k3_para_time_ms << "ms, teps avg = " << k3_para_teps << "teps" << std::endl;
 
 	return 0;
 }
