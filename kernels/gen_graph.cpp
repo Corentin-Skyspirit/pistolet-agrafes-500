@@ -538,14 +538,8 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 		}
 	}
 
-	// Compute total number of edges as sum of degrees to avoid relying on
-	// partial_sums.back() which may refer to omp_max_threads rather than
-	// the actual number of threads used.
-	int64_t nb_edges = 0;
-	for (int64_t i = 0; i < nb_nodes; ++i) {
-		nb_edges += degrees[i].load(std::memory_order_relaxed);
-	}
-	g.slicing_idx[nb_nodes] = nb_edges;
+	g.slicing_idx[nb_nodes] = partial_sums.back();
+	int64_t nb_edges = partial_sums.back();
 
 	// Allocate neighbor arrays
 	g.neighbors = (int64_t*)malloc(nb_edges * sizeof(int64_t));
