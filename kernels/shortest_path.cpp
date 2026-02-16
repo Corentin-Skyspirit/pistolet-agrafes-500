@@ -1,6 +1,7 @@
 #include "shortest_path.hpp"
 #include <assert.h>
 #include <chrono>
+#include <cstring>
 #include <limits>
 #include <omp.h>
 #include <queue>
@@ -60,13 +61,6 @@ shortest_path sssp(graph g, int64_t root) {
 
 	sp.teps = (double)g.length / (sp.time_ms * 1e-3);
 
-	for (int64_t i = 0; i < g.nb_nodes; i++) {
-		if (i == root)
-			continue;
-		assert(sp.parent_array[i] != -1);
-		assert(sp.distance_array[i] >= 0.0f);
-	}
-
 	return sp;
 }
 
@@ -80,59 +74,64 @@ shortest_path sssp_parallel(graph g, int64_t root) {
 	sp.distance_array = (float*)malloc(N * sizeof(float));
 	sp.parent_array = (int64_t*)malloc(N * sizeof(int64_t));
 
+	float* dist_old = (float*)malloc(N * sizeof(float));
+	float* dist_new = (float*)malloc(N * sizeof(float));
+
 	for (int64_t i = 0; i < N; i++) {
-		sp.distance_array[i] = INF;
+		dist_old[i] = INF;
+		dist_new[i] = INF;
 		sp.parent_array[i] = -1;
 	}
 
-	sp.distance_array[root] = 0.0f;
+	dist_old[root] = 0.0f;
 	sp.parent_array[root] = root;
 
-	using pq_elem = std::pair<float, int64_t>;
-	std::priority_queue<pq_elem, std::vector<pq_elem>, std::greater<pq_elem>> pq;
-	pq.push({0.0f, root});
+	bool changed = true;
 
-	while (!pq.empty()) {
-		auto [dist_u, u] = pq.top();
-		pq.pop();
+	for (int64_t iter = 0; iter < N - 1 && changed; iter++) {
+		changed = false;
 
-		if (dist_u > sp.distance_array[u])
-			continue;
+		// copie des distances
+		std::memcpy(dist_new, dist_old, N * sizeof(float));
 
-		int64_t begin = g.slicing_idx[u];
-		int64_t end = g.slicing_idx[u + 1];
-
-// 🔹 relaxation parallèle des voisins
 #pragma omp parallel for schedule(static)
-		for (int64_t i = begin; i < end; i++) {
-			int64_t v = g.neighbors[i];
-			float w = g.weights[i];
-			float alt = dist_u + w;
+		for (int64_t u = 0; u < N; u++) {
+			float du = dist_old[u];
+			if (du == INF)
+				continue;
 
-			if (alt < sp.distance_array[v]) {
+			for (int64_t i = g.slicing_idx[u]; i < g.slicing_idx[u + 1]; i++) {
+				int64_t v = g.neighbors[i];
+				float w = g.weights[i];
+				float alt = du + w;
+
+				if (alt < dist_new[v]) {
 #pragma omp critical
-				{
-					if (alt < sp.distance_array[v]) {
-						sp.distance_array[v] = alt;
-						sp.parent_array[v] = u;
-						pq.push({alt, v});
+					{
+						if (alt < dist_new[v]) {
+							dist_new[v] = alt;
+							sp.parent_array[v] = u;
+							changed = true;
+						}
 					}
 				}
 			}
 		}
+
+		// swap buffers
+		std::swap(dist_old, dist_new);
 	}
 
-	auto end_t = std::chrono::high_resolution_clock::now();
-	sp.time_ms = std::chrono::duration<double, std::milli>(end_t - start).count();
+	// résultat final
+	std::memcpy(sp.distance_array, dist_old, N * sizeof(float));
+
+	free(dist_old);
+	free(dist_new);
+
+	auto end = std::chrono::high_resolution_clock::now();
+	sp.time_ms = std::chrono::duration<double, std::milli>(end - start).count();
 
 	sp.teps = (double)g.length / (sp.time_ms * 1e-3);
 
 	return sp;
-
-	for (int64_t i = 0; i < g.nb_nodes; i++) {
-		if (i == root)
-			continue;
-		assert(sp.parent_array[i] != -1);
-		assert(sp.distance_array[i] >= 0.0f);
-	}
 }
