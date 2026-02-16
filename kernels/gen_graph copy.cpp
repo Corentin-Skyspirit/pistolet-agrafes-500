@@ -133,7 +133,6 @@ graph from_edge_list_v2(edge_list input_list) {
 	edge* edges = (edge*)malloc(sizeof(edge) * 2 * input_list.length);
 
 	// Duplicate the edges
-	auto start_duplication = std::chrono::high_resolution_clock::now();
 	for (size_t i = 0; i < input_list.length; i++) {
 		edges[2 * i] = (edge){
 			.u = input_list.edges[i].v1,
@@ -147,7 +146,7 @@ graph from_edge_list_v2(edge_list input_list) {
 		};
 	}
 	printf("Took %f seconds to duplicate edges\n",
-		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_duplication).count());
+		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count());
 
 	// Sort them lexicographically
 	auto start_sort = std::chrono::high_resolution_clock::now();
@@ -378,7 +377,6 @@ graph from_edge_list_v2_parallel(edge_list input_list) {
 
 	edge* edges = (edge*)malloc(sizeof(edge) * 2 * input_list.length);
 
-	auto start_duplication = std::chrono::high_resolution_clock::now();
 #pragma omp parallel for schedule(static)
 	// Duplicate the edges
 	for (size_t i = 0; i < input_list.length; i++) {
@@ -393,21 +391,15 @@ graph from_edge_list_v2_parallel(edge_list input_list) {
 			.weight = input_list.weights[i],
 		};
 	}
-	printf("Took %f seconds to duplicate edges\n",
-		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_duplication).count());
 
 	// Sort them lexicographically
-	auto start_sort = std::chrono::high_resolution_clock::now();
 	tbb::parallel_sort(edges, edges + (input_list.length * 2), [&](const edge& e1, const edge& e2) {
 		if (e1.u != e2.u) {
 			return e1.u < e2.u;
 		}
 		return e1.v < e2.v;
 	});
-	printf("Took %f seconds to sort edges\n",
-		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_sort).count());
 
-	auto start_build = std::chrono::high_resolution_clock::now();
 	int64_t nb_nodes = edges[(input_list.length * 2) - 1].u + 1;
 	g.slicing_idx = (int64_t*)malloc(nb_nodes * sizeof(int64_t));
 	g.neighbors = (int64_t*)malloc(2 * input_list.length * sizeof(int64_t));
@@ -456,8 +448,6 @@ graph from_edge_list_v2_parallel(edge_list input_list) {
 	g.slicing_idx[nb_nodes_so_far] = nb_neighbors_so_far;
 	g.length = nb_neighbors_so_far;
 	g.nb_nodes = nb_nodes;
-	printf("Took %f seconds to build CSR\n",
-		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_build).count());
 
 	g.time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count();
 
@@ -478,7 +468,6 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 	graph g;
 
 	// Compute number of nodes
-	auto start_count = std::chrono::high_resolution_clock::now();
 	int64_t max_node = -1;
 #pragma omp parallel for reduction(max : max_node)
 	for (int64_t i = 0; i < input_list.length; ++i) {
@@ -486,11 +475,8 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 		max_node = std::max(max_node, input_list.edges[i].v1);
 	}
 	int64_t nb_nodes = max_node + 1;
-	printf("Took %f seconds to compute number of nodes\n",
-		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_count).count());
 
 	// Count degrees
-	auto start_degree = std::chrono::high_resolution_clock::now();
 	std::vector<int64_t> degrees(nb_nodes);
 #pragma omp parallel for schedule(static)
 	for (int64_t i = 0; i < input_list.length; ++i) {
@@ -501,8 +487,6 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 		degrees[input_list.edges[i].v0]++;
 		degrees[input_list.edges[i].v1]++;
 	}
-	printf("Took %f seconds to count degrees\n",
-		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_degree).count());
 
 	// Do prefix sum of degrees to get slicing_idx (parallel scan)
 	g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
@@ -546,7 +530,6 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 	g.weights = (float*)malloc(nb_edges * sizeof(float));
 
 	// Fill using per-node cursors (parallel): use atomics to allocate per-node slots
-	auto start_fill = std::chrono::high_resolution_clock::now();
 	std::vector<std::atomic<int64_t>> next_write_idx(nb_nodes);
 	for (int64_t i = 0; i < nb_nodes; ++i) {
 		next_write_idx[i].store(g.slicing_idx[i], std::memory_order_relaxed);
@@ -572,14 +555,12 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 		g.neighbors[write_idx_v] = u;
 		g.weights[write_idx_v] = weight;
 	}
-	printf("Took %f seconds to fill neighbor arrays\n",
-		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_fill).count());
 
 	g.length = nb_edges;
 	g.nb_nodes = nb_nodes;
+	g.time_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - start).count();
 
 	// On-the-fly per-node deduplication using a marker table
-	auto start_dedup = std::chrono::high_resolution_clock::now();
 	int64_t old_nb_edges = nb_edges;
 	int64_t* new_neighbors = (int64_t*)malloc(old_nb_edges * sizeof(int64_t));
 	float* new_weights = (float*)malloc(old_nb_edges * sizeof(float));
@@ -621,11 +602,6 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 	g.weights = new_weights;
 	g.slicing_idx = new_slices_idx;
 	g.length = write_pos;
-
-	printf("Took %f seconds to deduplicate neighbors\n",
-		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_dedup).count());
-
-	g.time_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - start).count();
 
 	// Verification avec vieux algorithme
 	// graph g_ref = from_edge_list_v2(input_list);
