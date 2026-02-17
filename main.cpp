@@ -22,7 +22,7 @@ int main(int argc, char const* argv[]) {
 	printf("\nFINISHED COMPARING FROM EDGE LIST IMPLEMS\n\n");
 
 	// Compare BFS using a bigger one
-	edge_list list = generate_graph(15, 16);
+	edge_list list = generate_graph(12, 10);
 	graph g = from_edge_list(list); // Kernel 1 compute
 	std::cout << "Graph generation : nb_nodes = " << g.nb_nodes << ", nb_neighbors = " << g.length << ", time = " << g.time_ms << "ms"
 			  << '\n';
@@ -43,7 +43,7 @@ int main(int argc, char const* argv[]) {
 	const int64_t NB_NODES_TO_TRY = 64;
 	edge_list_destroy(list);
 
-	/*if (omp_get_max_threads() == 1) {
+	if (omp_get_max_threads() == 1) {
 		{
 			double k2_time_ms = 0;
 			double k2_teps = 0;
@@ -191,16 +191,19 @@ int main(int argc, char const* argv[]) {
 			k2_teps /= NB_NODES_TO_TRY;
 			printf("BFS Hybrid - Avg. time: %fms\n", k2_time_ms);
 		}
-	}*/
+	}
 
 	printf("\nCOMPARING SSSP IMPLEMS\n\n");
 
+	// init de tous les résultats
 	double k3_dj_time_ms = 0;
 	double k3_dj_teps = 0;
 	double k3_bf_time_ms = 0;
 	double k3_bf_teps = 0;
 	double k3_para_time_ms = 0;
 	double k3_para_teps = 0;
+
+	// on fait des tests pour des nodes non dégénérées 
 	for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
 		int64_t node = rand() % g.nb_nodes;
 		if (degree_of_node(g, node) <= 0) {
@@ -209,18 +212,22 @@ int main(int argc, char const* argv[]) {
 		i++;
 
 		// Kernel 3
+		// on teste différemment en fonction du nombre de noeuds
 		if (omp_get_max_threads() == 1) {
+			// premier test avec dijkstra
 			shortest_path kernel3_dj = sssp_dj(g, node);
 			k3_dj_time_ms += kernel3_dj.time_ms;
 			k3_dj_teps += kernel3_dj.teps;
 			shortest_path_destroy(kernel3_dj);
 
+			// second test avec bellman ford
 			shortest_path kernel3_bf = sssp_bf(g, node);
 			k3_bf_time_ms += kernel3_bf.time_ms;
 			k3_bf_teps += kernel3_bf.teps;
 			shortest_path_destroy(kernel3_bf);
 		}
 		else {
+			// dès qu'on a plusieurs noeuds on peut sur bellmand ford parallélisé
 			shortest_path kernel3_para = sssp_parallel(g, node);
 			k3_para_time_ms += kernel3_para.time_ms;
 			k3_para_teps += kernel3_para.teps;
@@ -233,12 +240,14 @@ int main(int argc, char const* argv[]) {
 			}
 		}*/
 	}
+	// division pour la moyennne
 	k3_dj_time_ms /= NB_NODES_TO_TRY;
 	k3_dj_teps /= NB_NODES_TO_TRY;
 	k3_bf_time_ms /= NB_NODES_TO_TRY;
 	k3_bf_teps /= NB_NODES_TO_TRY;
 	k3_para_time_ms /= NB_NODES_TO_TRY;
 	k3_para_teps /= NB_NODES_TO_TRY;
+	// et les prints
 	std::cout << "Dijkstra SSSP  - Avg. time: " << k3_dj_time_ms << "ms, teps avg = " << k3_dj_teps << "teps" << std::endl;
 	std::cout << "Bellman-Ford SSSP  - Avg. time: " << k3_bf_time_ms << "ms, teps avg = " << k3_bf_teps << "teps" << std::endl;
 	std::cout << "Parallel B-F SSSP  - Avg. time: " << k3_para_time_ms << "ms, teps avg = " << k3_para_teps << "teps" << std::endl;
