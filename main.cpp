@@ -14,15 +14,15 @@ int main(int argc, char const* argv[]) {
 	std::cout << "OpenMP: num_threads = " << omp_get_max_threads() << std::endl;
 
 	// Compare different implementations of from_edge_list
-	{
-		edge_list list = generate_graph(12, 16);
-		from_edge_list_try_all(list);
-	}
+	// {
+	// 	edge_list list = generate_graph(12, 16);
+	// 	from_edge_list_try_all(list);
+	// }
 
 	printf("\nFINISHED COMPARING FROM EDGE LIST IMPLEMS\n\n");
 
 	// Compare BFS using a bigger one
-	edge_list list = generate_graph(12, 16);
+	edge_list list = generate_graph(15, 16);
 	graph g = from_edge_list(list); // Kernel 1 compute
 	std::cout << "Graph generation : nb_nodes = " << g.nb_nodes << ", nb_neighbors = " << g.length << ", time = " << g.time_ms << "ms"
 			  << '\n';
