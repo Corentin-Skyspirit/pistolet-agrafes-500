@@ -22,7 +22,13 @@ int main(int argc, char const* argv[]) {
 	printf("\nFINISHED COMPARING FROM EDGE LIST IMPLEMS\n\n");
 
 	// Compare BFS using a bigger one
+
+	auto old_nb_threads = omp_get_max_threads();
+	// Parallel graph generation to speed up the process
+	omp_set_num_threads(64);
 	edge_list list = generate_graph(18, 16);
+	omp_set_num_threads(old_nb_threads);
+
 	graph g = from_edge_list(list); // Kernel 1 compute
 	std::cout << "Graph generation : nb_nodes = " << g.nb_nodes << ", nb_neighbors = " << g.length << ", time = " << g.time_ms << "ms"
 			  << '\n';
