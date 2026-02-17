@@ -9,3 +9,7 @@
 
 # The rest of the patterns to ignore
 **.o
+
+**.venv
+**.png
+.vscode

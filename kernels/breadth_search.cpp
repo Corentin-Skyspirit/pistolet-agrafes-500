@@ -477,7 +477,7 @@ typedef struct hybrid_set {
 // Switches between top-down and bottom-up using a simple heuristic based
 // on the number of edges to check from the frontier (m_f) and from
 // unexplored vertices (m_u). Constants C_TB and C_BT tune switching.
-bfs_result bfs_hybrid(graph& g, int64_t source) {
+bfs_result bfs_hybrid_paper(graph& g, int64_t source) {
 	auto start = std::chrono::high_resolution_clock::now();
 
 	hybrid_set frontier(g.nb_nodes);
@@ -527,6 +527,75 @@ bfs_result bfs_hybrid(graph& g, int64_t source) {
 			bottom_up_step_parallel_bitset(g, frontier.as_bitset(), next.as_bitset(), parents_atomic);
 			atomic_bitset_swap(frontier.as_bitset(), next.as_bitset());
 			next.as_bitset().clear();
+		}
+	}
+
+	auto end = std::chrono::high_resolution_clock::now();
+	auto time_ms = std::chrono::duration<double, std::milli>(end - start).count();
+
+	return (bfs_result){
+		.parent_array = parents,
+		.teps = 0.0,
+		.time_ms = time_ms,
+	};
+}
+
+static int64_t bitset_sum_of_degrees(AtomicBitSet& bitset, graph& g) {
+	int64_t sum = 0;
+	bitset.for_each([&](int64_t node) { sum += (g.slicing_idx[node + 1] - g.slicing_idx[node]); });
+	return sum;
+}
+
+bfs_result bfs_hybrid(graph& g, int64_t source) {
+	auto start = std::chrono::high_resolution_clock::now();
+
+	AtomicBitSet frontier(g.nb_nodes);
+	frontier.insert(source);
+
+	AtomicBitSet next(g.nb_nodes);
+
+	// Same pointers for both implementations to simplify switching and avoid copying when not needed
+	int64_t* parents = (int64_t*)malloc(g.nb_nodes * sizeof(int64_t));
+	std::atomic<int64_t>* parents_atomic = (std::atomic<int64_t>*)parents;
+	std::fill(parents, parents + g.nb_nodes, -1);
+	parents[source] = source;
+
+	bool top_down = true;
+	const double C_TB = 10.0; // threshold for switching top->bottom
+	const double C_BT = 40.0; // threshold for switching bottom->top
+
+	while (!frontier.empty()) {
+		// compute m_f = sum degrees of frontier
+		uint64_t m_f = bitset_sum_of_degrees(frontier, g);
+
+		// compute m_u = sum degrees of unexplored vertices
+		uint64_t m_u = 0;
+		for (int64_t v = 0; v < g.nb_nodes; ++v) {
+			if (parents[v] == -1) {
+				m_u += (uint64_t)(g.slicing_idx[v + 1] - g.slicing_idx[v]);
+			}
+		}
+
+		if (top_down) {
+			if (m_f > m_u / C_TB) {
+				top_down = false;
+			}
+		}
+		else {
+			if (m_f < m_u / C_BT) {
+				top_down = true;
+			}
+		}
+
+		if (top_down) {
+			top_down_step_parallel_bitset(g, frontier, next, parents_atomic);
+			atomic_bitset_swap(frontier, next);
+			next.clear();
+		}
+		else {
+			bottom_up_step_parallel_bitset(g, frontier, next, parents_atomic);
+			atomic_bitset_swap(frontier, next);
+			next.clear();
 		}
 	}
 

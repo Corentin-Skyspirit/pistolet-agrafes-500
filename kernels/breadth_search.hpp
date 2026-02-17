@@ -22,6 +22,7 @@ bfs_result bfs_full_top_down_bitset(graph& g, int64_t source);
 bfs_result bfs_full_bottom_up_bitset(graph& g, int64_t source);
 bfs_result bfs_full_top_down_parallel_bitset(graph& g, int64_t source);
 bfs_result bfs_full_bottom_up_parallel_bitset(graph& g, int64_t source);
+bfs_result bfs_hybrid_paper(graph& g, int64_t source);
 bfs_result bfs_hybrid(graph& g, int64_t source);
 
 #endif
