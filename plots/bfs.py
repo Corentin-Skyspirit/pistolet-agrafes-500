@@ -1,3 +1,7 @@
+#####################################################################
+# Plots the performance of different BFS (Kernel 2) implementations #
+#####################################################################
+
 import matplotlib.pyplot as plt
 
 nb_threads = [1, 2, 4, 8, 16, 32, 64]
@@ -11,7 +15,6 @@ full_bottom_up_bitset = [2.219, 1.543, 0.80820, 0.53479, 0.269789, 0.19468, 0.20
 hybrid_paper = [0.09127, 0.09094, 0.08935, 0.08795, 0.086499, 0.079900, 0.088632]
 hybrid = [0.071196, 0.052892, 0.022871, 0.015052, 0.008029, 0.007433, 0.006806]
 
-# plt.plot(nb_threads, ref, marker='o', label='Référence')
 plt.plot(nb_threads, formal, marker='o', label='Formel')
 plt.plot(nb_threads, full_top_down, marker='o', label='Top-Down (std::unordered_set)')
 plt.plot(nb_threads, full_bottom_up, marker='o', label='Bottom-Up (std::unordered_set)')
@@ -29,11 +32,13 @@ plt.grid(True, alpha=0.5)
 plt.tight_layout()
 plt.savefig("bfs_all.svg")
 
+
+# Zoom on Hybrid vs Reference
+
 plt.clf()
 plt.plot(nb_threads, ref, marker='o', label='Référence')
 plt.plot(nb_threads, hybrid_paper, marker='o', label='Hybride (Papier)')
 plt.plot(nb_threads, hybrid, marker='o', label='Hybride (Optimisé)')
-
 plt.xlabel('Nombre de Threads')
 plt.ylabel('Temps (s)')
 plt.title('Zoom sur BFS Hybride vs Référence')

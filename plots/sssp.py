@@ -1,9 +1,14 @@
+######################################################################
+# Plots the performance of different SSSP (Kernel 3) implementations #
+######################################################################
+
+
 import matplotlib.pyplot as plt
 
-# Données
+# Number of threads
 nodes = [1, 2, 4, 8, 16, 32, 64]
 
-# Référence Graph500 (ms)
+# Reference Graph500 (ms)
 graph500_times = [14.3, 11.8, 6.7, 3.9, 3.8, 3.9, 4.72]
 
 # Dijkstra (constant)

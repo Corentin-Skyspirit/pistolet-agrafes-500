@@ -1,3 +1,7 @@
+########################################################
+# Plots the per-step timing of each BFS implementation #
+########################################################
+
 results = """Top-down (std::set) per-level timings (ms): 0:0.002 1:3.429 2:72.405 3:22.047 4:0.275 5:0.001
 Top-down (std::set) per-level timings (ms): 0:0.001 1:0.071 2:31.243 3:57.955 4:3.198 5:0.013
 Top-down (std::set) per-level timings (ms): 0:0.011 1:11.032 2:75.228 3:14.162 4:0.125
@@ -304,7 +308,7 @@ if global_max <= 0.0:
         global_max = 1.0
 ylim = global_max * 1.05
 
-# Produce ONLY per-label average-per-step bar plots with shared y-scale
+# Produce per-label average-per-step bar plots with shared y-scale
 # Build a consistent color mapping for labels using a qualitative colormap
 labels = sorted(out_avg.keys())
 cmap = plt.get_cmap('tab20')

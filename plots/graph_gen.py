@@ -1,3 +1,7 @@
+##################################################################################
+# Plots the performance of different Graph Generation (Kernel 1) implementations #
+##################################################################################
+
 import numpy as np
 
 v2 = [1.789017, 11.7407, 0.250080]
@@ -36,7 +40,6 @@ for i in range(len(data)):
 
 data = np.array(data)
 
-# Plot
 plt.xscale('log', base=2)
 plt.xticks(nb_threads, labels=nb_threads)
 
@@ -46,7 +49,7 @@ bar_width = 0.6
 # and V3 (last two) groups for visual separation.
 indices = np.arange(len(data), dtype=float)
 gap = 0.6
-N_before = 3  # number of groups before the gap (set to 3 for split 3 then 2)
+N_before = 3  # number of groups before the gap
 if len(indices) > N_before:
         indices[N_before:] += gap
 
@@ -61,6 +64,7 @@ ax.set_xticks(indices)
 ax.set_xticklabels(bar_names)
 ax.set_ylabel("Temps (s)")
 ax.set_title("Performance des algorithmes Pré-Tri et 2-passes")
+
 # Create separate legends for Pré-Sort and 2-pass showing step colors
 handles_v2 = [mpatches.Patch(color=colors[i % len(colors)]) for i in range(len(names_v2))]
 handles_v3 = [mpatches.Patch(color=colors[i % len(colors)]) for i in range(len(names_v3))]
@@ -75,9 +79,6 @@ ax.set_ylim(0, ymax * 1.12)
 
 plt.tight_layout()
 plt.savefig("graph_gen.png")
-
-
-
 
 nb_threads = [1, 2, 4, 8, 16, 32, 64]
 ref = [0.00152132, 0.00323817, 0.00317167, 0.00288119, 0.00382385, 0.00506352, 0.00545395] 
