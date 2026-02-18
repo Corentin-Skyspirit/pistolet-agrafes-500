@@ -3,36 +3,42 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <omp.h>
 #include <tbb/parallel_sort.h>
 #include <vector>
 
+/// @brief Free the memory allocated for a graph.
+/// @param g The graph to destroy.
 void graph_destroy(graph& g) {
 	free(g.neighbors);
 	free(g.weights);
 	free(g.slicing_idx);
 }
 
-void print_slicing_idx(const graph& g) {
+/// @brief Debug print of the slicing_idx array.
+static void print_slicing_idx(const graph& g) {
 	std::cout << "slicing_idx: ";
 	for (int64_t i = 0; i <= g.nb_nodes; ++i) {
 		std::cout << g.slicing_idx[i] << " ";
 	}
-	std::cout << std::endl;
+	std::cout << '\n';
 }
 
-void print_neighbors(const graph& g) {
+/// @brief Debug print of the neighbors for each node, with associated weights.
+static void print_neighbors(const graph& g) {
 	for (int64_t node = 0; node < g.nb_nodes; node++) {
 		std::cout << "Node " << node << ": ";
 		for (int64_t i = g.slicing_idx[node]; i < g.slicing_idx[node + 1]; ++i) {
 			std::cout << "(" << g.neighbors[i] << ", " << g.weights[i] << ") ";
 		}
-		std::cout << std::endl;
+		std::cout << '\n';
 	}
 }
 
-void print_neighbors_array(const graph& g) {
+/// @brief Debug print of the raw neighbors array.
+static void print_neighbors_array(const graph& g) {
 	std::cout << "neighbors array: ";
 	for (int64_t i = 0; i < g.length; ++i) {
 		std::cout << g.neighbors[i] << " ";
@@ -40,6 +46,7 @@ void print_neighbors_array(const graph& g) {
 	std::cout << std::endl;
 }
 
+/// @brief Debug print of the neighbors of a single node.
 static void print_neighbors_of_node(const graph& graph_obj, int64_t node) {
 	std::vector<int64_t> neighbors;
 	for (int64_t i = graph_obj.slicing_idx[node]; i < graph_obj.slicing_idx[node + 1]; ++i) {
@@ -53,6 +60,8 @@ static void print_neighbors_of_node(const graph& graph_obj, int64_t node) {
 	std::cout << '\n';
 }
 
+/// @brief Build a graph from an edge list.
+/// First algorithm we tried. Unusable for large graphs.
 graph from_edge_list_v1(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	int64_t max_node = 0;
@@ -107,25 +116,29 @@ graph from_edge_list_v1(edge_list input_list) {
 	return g;
 }
 
-#include <cmath>
-
-typedef struct {
-	int64_t u, v;
-	float weight;
+/// @brief A structure of an edge with associated weight directly next to the nodes.
+typedef struct edge {
+	int64_t u, v; ///< Nodes connected
+	float weight; ///< Weight of the edge
 } edge;
 
+/// @brief Check if two edges are the same
 bool are_same_edge(const edge& e1, const edge& e2) {
 	return e1.u == e2.u && e1.v == e2.v;
 }
 
+/// @brief Check if an edge is a loop (u == v)
 bool is_loop(const edge& e) {
 	return e.u == e.v;
 }
 
+/// @brief Check if a packed edge is a loop (v0 == v1)
 bool is_loop(const packed_edge& e) {
 	return e.v0 == e.v1;
 }
 
+/// @brief Build a graph from an edge list.
+/// 2nd algorithm we tried. "Pré-Tri"/"Pre-Sort".
 graph from_edge_list_v2(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	graph g;
@@ -229,9 +242,8 @@ graph from_edge_list_v2(edge_list input_list) {
 	return g;
 }
 
-// Fast two-pass CSR builder (counts -> prefix-sum -> fill).
-// - emits undirected edges (u->v and v->u)
-// - O(n + m) time, no global sort
+/// @brief Build a graph from an edge list.
+/// 3rd algorithm we tried. "2-passes"
 graph from_edge_list_v3(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	graph g;
@@ -375,6 +387,7 @@ graph from_edge_list_v3(edge_list input_list) {
 	return g;
 }
 
+/// @brief Parallel version of from_edge_list_v2.
 graph from_edge_list_v2_parallel(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	graph g;
@@ -400,7 +413,7 @@ graph from_edge_list_v2_parallel(edge_list input_list) {
 	printf("Took %f seconds to duplicate edges\n",
 		   std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start_duplication).count());
 
-	// Sort them lexicographically
+	// Sort them lexicographically (parallel)
 	auto start_sort = std::chrono::high_resolution_clock::now();
 	tbb::parallel_sort(edges, edges + (input_list.length * 2), [&](const edge& e1, const edge& e2) {
 		if (e1.u != e2.u) {
@@ -479,6 +492,7 @@ graph from_edge_list_v2_parallel(edge_list input_list) {
 	return g;
 }
 
+/// @brief Parallel version of from_edge_list_v3.
 graph from_edge_list_v3_parallel(edge_list input_list) {
 	auto start = std::chrono::high_resolution_clock::now();
 	graph g;
@@ -508,8 +522,9 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 	// 		degrees[input_list.edges[i].v1].fetch_add(1, std::memory_order_relaxed);
 	// 	}
 
-	// Count degrees (not parallel) -> was too slow because of atomics or something
-	// we also need to remove prefix sum in parallel because it counted on the atomics
+	// Count degrees (not parallel) -> the parallel version was too slow because of atomics or something.
+	// We also need to remove prefix sum in parallel because it counted on the atomics.
+	// Not a huge loss anyways because it was a very fast step anyways
 	auto start_degree = std::chrono::high_resolution_clock::now();
 	std::vector<int64_t> degrees(nb_nodes, 0);
 	for (int64_t i = 0; i < input_list.length; ++i) {
@@ -526,10 +541,10 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 	// Do prefix sum of degrees to get slicing_idx (parallel scan)
 	auto prefix_sum_start = std::chrono::high_resolution_clock::now();
 
+	// Compute partial sums in parallel
 	// g.slicing_idx = (int64_t*)malloc((nb_nodes + 1) * sizeof(int64_t));
 	// std::vector<int64_t> partial_sums(omp_get_max_threads() + 1, 0);
 
-	// Compute partial sums in parallel
 	// #pragma omp parallel
 	// 	{
 	// 		int tid = omp_get_thread_num();
@@ -671,8 +686,9 @@ graph from_edge_list_v3_parallel(edge_list input_list) {
 
 	return g;
 }
-#include <omp.h>
 
+/// @brief Try all different implementations of from_edge_list we did, and print their execution times.
+/// Used for benchmarking and comparing them.
 void from_edge_list_try_all(edge_list input_list) {
 	graph g;
 
@@ -697,6 +713,9 @@ void from_edge_list_try_all(edge_list input_list) {
 	}
 }
 
-graph from_edge_list(edge_list input_list) {
+/// @brief Build a graph from an edge list.
+/// Just uses the fastest one we found experimentally.
+/// @param input_list The list of edges to build the graph from.
+graph from_edge_list(edge_list& input_list) {
 	return from_edge_list_v3_parallel(input_list);
 }

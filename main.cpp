@@ -1,58 +1,51 @@
 #include "generator/generator.hpp"
-#include "kernels/breadth_search.hpp"
+#include "kernels/breadth_first_search.hpp"
 #include "kernels/gen_graph.hpp"
 #include "kernels/shortest_path.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <omp.h>
-#include <random>
 
 int main(int argc, char const* argv[]) {
-	// edge_list list = generate_graph(5, 2);
-	// print_edge_list(&list);
+	std::cout << "OpenMP: num_threads = " << omp_get_max_threads() << '\n';
 
-	std::cout << "OpenMP: num_threads = " << omp_get_max_threads() << std::endl;
+	////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////// KERNEL 1 /////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////
 
 	// Compare different implementations of from_edge_list
 	{
 		edge_list list = generate_graph(8, 16);
 		from_edge_list_try_all(list);
+		edge_list_destroy(list);
 	}
 
 	printf("\nFINISHED COMPARING FROM EDGE LIST IMPLEMS\n\n");
-	exit(EXIT_SUCCESS);
+
+	////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////// KERNEL 2 /////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////
 
 	// Compare BFS using a bigger one
-
-	auto old_nb_threads = omp_get_max_threads();
 	// Parallel graph generation to speed up the process
+	auto old_nb_threads = omp_get_max_threads();
 	omp_set_num_threads(64);
 	edge_list list = generate_graph(18, 16);
 	omp_set_num_threads(old_nb_threads);
 
-	graph g = from_edge_list(list); // Kernel 1 compute
+	graph g = from_edge_list(list);
 	std::cout << "Graph generation : nb_nodes = " << g.nb_nodes << ", nb_neighbors = " << g.length << ", time = " << g.time_ms << "ms"
 			  << '\n';
+	edge_list_destroy(list);
 
 	printf("\nCOMPARING BFS IMPLEMS\n\n");
 
-	// if (argv[1] != nullptr) {
-	// 	for (int64_t node = 0; node < g.nb_nodes; node++) {
-	// 		std::cout << "Neighbors of " << node << " :" << std::endl;
-
-	// 		for (int64_t i = g.slicing_idx[node]; i < g.slicing_idx[node + 1]; i++) {
-
-	// 			std::cout << "  (" << g.neighbors[i] << ", " << g.weights[i] << ")" << std::endl;
-	// 		}
-	// 	}
-	// }
-
 	const int64_t NB_NODES_TO_TRY = 64;
-	edge_list_destroy(list);
 
+	// Sequential BFS implementations
 	if (omp_get_max_threads() == 1) {
-		/*{
+		{
 			double k2_time_ms = 0;
 			double k2_teps = 0;
 			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
@@ -142,7 +135,7 @@ int main(int argc, char const* argv[]) {
 			k2_time_ms /= NB_NODES_TO_TRY;
 			k2_teps /= NB_NODES_TO_TRY;
 			printf("BFS Full Bottom-Up (Bitset) - Avg. time: %fms\n", k2_time_ms);
-		}*/
+		}
 		{
 			double k2_time_ms = 0;
 			double k2_teps = 0;
@@ -180,8 +173,9 @@ int main(int argc, char const* argv[]) {
 			printf("BFS Hybrid - Avg. time: %fms\n", k2_time_ms);
 		}
 	}
+	// Parallel BFS implementations
 	else {
-		/*{
+		{
 			double k2_time_ms = 0;
 			double k2_teps = 0;
 			for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
@@ -234,8 +228,7 @@ int main(int argc, char const* argv[]) {
 			k2_time_ms /= NB_NODES_TO_TRY;
 			k2_teps /= NB_NODES_TO_TRY;
 			printf("BFS Hybrid (Paper) - Avg. time: %fms\n", k2_time_ms);
-		}*/
-
+		}
 		{
 			double k2_time_ms = 0;
 			double k2_teps = 0;
@@ -256,40 +249,73 @@ int main(int argc, char const* argv[]) {
 		}
 	}
 
-	// double k3_time_ms = 0;
-	// double k3_teps = 0;
-	// double k3_para_time_ms = 0;
-	// double k3_para_teps = 0;
-	// for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
-	// 	int64_t node = rand() % g.nb_nodes;
-	// 	if (degree_of_node(g, node) <= 0) {
-	// 		continue;
-	// 	}
-	// 	i++;
+	////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////// KERNEL 3 /////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////
 
-	// 	// Kernel 3
-	// 	shortest_path kernel3 = sssp(g, node);
-	// 	k3_time_ms += kernel3.time_ms;
-	// 	k3_teps += kernel3.teps;
-	// 	shortest_path_destroy(kernel3);
+	// Compare SSSP using a smaller one
+	// Parallel graph generation to speed up the process
+	graph_destroy(g);
+	old_nb_threads = omp_get_max_threads();
+	omp_set_num_threads(64);
+	list = generate_graph(15, 16);
+	omp_set_num_threads(old_nb_threads);
 
-	// 	shortest_path kernel3_para = sssp_parallel(g, node);
-	// 	k3_para_time_ms += kernel3_para.time_ms;
-	// 	k3_para_teps += kernel3_para.teps;
-	// 	shortest_path_destroy(kernel3_para);
+	g = from_edge_list(list);
+	std::cout << "Graph generation : nb_nodes = " << g.nb_nodes << ", nb_neighbors = " << g.length << ", time = " << g.time_ms << "ms"
+			  << '\n';
+	edge_list_destroy(list);
 
-	// 	if (argv[1] != nullptr) {
-	// 		for (int64_t i = 0; i < g.nb_nodes; i++) {
-	// 			std::cout << "Node " << i << " dist=" << kernel3.distance_array[i] << " parent=" << kernel3.parent_array[i] << std::endl;
-	// 		}
-	// 	}
-	// }
-	// k3_time_ms /= NB_NODES_TO_TRY;
-	// k3_teps /= NB_NODES_TO_TRY;
-	// k3_para_time_ms /= NB_NODES_TO_TRY;
-	// k3_para_teps /= NB_NODES_TO_TRY;
-	// std::cout << "SSSP  - Avg. time: " << k3_time_ms << "ms, teps avg = " << k3_teps << "teps" << std::endl;
-	// std::cout << "Parallel SSSP  - Avg. time: " << k3_para_time_ms << "ms, teps avg = " << k3_para_teps << "teps" << std::endl;
+	// All results of different SSSP implementations.
+	double k3_dj_time_ms = 0;
+	double k3_dj_teps = 0;
+	double k3_bf_time_ms = 0;
+	double k3_bf_teps = 0;
+	double k3_para_time_ms = 0;
+	double k3_para_teps = 0;
+
+	// Check NB_NODES_TO_TRY random nodes in the graph, non-degenerate ones (with degree > 0).
+	for (int64_t i = 0; i < NB_NODES_TO_TRY;) {
+		int64_t node = rand() % g.nb_nodes;
+		if (degree_of_node(g, node) <= 0) {
+			continue;
+		}
+		i++;
+
+		// Kernel 3
+		// Check sequential implementations if we only have one thread
+		if (omp_get_max_threads() == 1) {
+			// Dijkstra's algorithm
+			shortest_path kernel3_dj = sssp_dj(g, node);
+			k3_dj_time_ms += kernel3_dj.time_ms;
+			k3_dj_teps += kernel3_dj.teps;
+			shortest_path_destroy(kernel3_dj);
+
+			// Bellman-Ford's algorithm
+			shortest_path kernel3_bf = sssp_bf(g, node);
+			k3_bf_time_ms += kernel3_bf.time_ms;
+			k3_bf_teps += kernel3_bf.teps;
+			shortest_path_destroy(kernel3_bf);
+		}
+		// Check parallel implementation otherwise
+		else {
+			// Parallel Bellman-Ford
+			shortest_path kernel3_para = sssp_parallel(g, node);
+			k3_para_time_ms += kernel3_para.time_ms;
+			k3_para_teps += kernel3_para.teps;
+			shortest_path_destroy(kernel3_para);
+		}
+	}
+	// Average the results over the number of nodes we tried.
+	k3_dj_time_ms /= NB_NODES_TO_TRY;
+	k3_dj_teps /= NB_NODES_TO_TRY;
+	k3_bf_time_ms /= NB_NODES_TO_TRY;
+	k3_bf_teps /= NB_NODES_TO_TRY;
+	k3_para_time_ms /= NB_NODES_TO_TRY;
+	k3_para_teps /= NB_NODES_TO_TRY;
+	std::cout << "Dijkstra SSSP  - Avg. time: " << k3_dj_time_ms << "ms, teps avg = " << k3_dj_teps << "teps" << '\n';
+	std::cout << "Bellman-Ford SSSP  - Avg. time: " << k3_bf_time_ms << "ms, teps avg = " << k3_bf_teps << "teps" << '\n';
+	std::cout << "Parallel B-F SSSP  - Avg. time: " << k3_para_time_ms << "ms, teps avg = " << k3_para_teps << "teps" << '\n';
 
 	graph_destroy(g);
 	return 0;

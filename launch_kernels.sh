@@ -12,11 +12,12 @@
 
 romeo_load_x64cpu_env
 
+# Find TBB (thank you spack for not doing that for us)
 spack load mpich tbb intel-tbb
 TBB_DIR=$(spack location -i tbb 2>/dev/null || spack location -i intel-tbb 2>/dev/null)
 TBB_LIB_DIR="$TBB_DIR/lib64"
 ls -la "$TBB_LIB_DIR"
-
+# And include it
 export CPPFLAGS="-I$TBB_DIR/include"
 export CXXFLAGS="-I$TBB_DIR/include"
 export LDFLAGS="-L$TBB_LIB_DIR -Wl,-rpath,$TBB_LIB_DIR"
@@ -24,7 +25,7 @@ export LDLIBS="-ltbb -ltbbmalloc -ltbbmalloc_proxy"
 
 make -B -j$(nproc) CPPFLAGS="$CPPFLAGS" CXXFLAGS="$CXXFLAGS" LDFLAGS="$LDFLAGS"
 
-# Run `./main` with different OMP thread counts and save per-run logs
+# Run main with different OpenMP thread counts
 THREADS_LIST="1 2 4 8 16 32 64"
 for t in $THREADS_LIST; do
         echo "=== Running with $t threads ===" | tee -a job.$SLURM_JOBID.out

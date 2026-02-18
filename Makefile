@@ -4,7 +4,7 @@ MPICC = mpicxx
 
 all: main
 
-GENERATOR_SOURCES = generator/graph_generator.cpp generator/make_graph.cpp generator/splittable_mrg.cpp generator/utils.cpp generator/generator.cpp kernels/gen_graph.cpp kernels/shortest_path.cpp kernels/breadth_search.cpp
+GENERATOR_SOURCES = generator/graph_generator.cpp generator/make_graph.cpp generator/splittable_mrg.cpp generator/utils.cpp generator/generator.cpp kernels/gen_graph.cpp kernels/shortest_path.cpp kernels/breadth_first_search.cpp
 SOURCES = main.cpp
 HEADERS = 
 
