@@ -3,6 +3,7 @@
 #include "kernels/gen_graph.hpp"
 #include "kernels/shortest_path.hpp"
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <omp.h>
 #include <random>
@@ -14,12 +15,13 @@ int main(int argc, char const* argv[]) {
 	std::cout << "OpenMP: num_threads = " << omp_get_max_threads() << std::endl;
 
 	// Compare different implementations of from_edge_list
-	// {
-	// edge_list list = generate_graph(12, 16);
-	// from_edge_list_try_all(list);
-	// }
+	{
+		edge_list list = generate_graph(8, 16);
+		from_edge_list_try_all(list);
+	}
 
 	printf("\nFINISHED COMPARING FROM EDGE LIST IMPLEMS\n\n");
+	exit(EXIT_SUCCESS);
 
 	// Compare BFS using a bigger one
 

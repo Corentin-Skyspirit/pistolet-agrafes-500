@@ -2,6 +2,7 @@ import numpy as np
 
 v2 = [1.789017, 11.7407, 0.250080]
 v2_parallel = [56.44, 48.939, 0.302653]
+v2_not_so_parallel = [1.81659, 4.939, 0.328631]
 names_v2 = ["Mise en liste", "Trier liens", "Construction CSR"]
 
 v3 = [23.95, 0.093, 0.000024, 46.549, 0.455]
@@ -14,14 +15,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 # Data for plotting
-data = [v2, v2_parallel, v3, v3_parallel]
+data = [v2, v2_parallel,  v2_not_so_parallel, v3, v3_parallel]
 labels = [
         [r"Pré-Tri: " + n for n in names_v2],
         [r"Pré-Tri (parallèle): " + n for n in names_v2],
+        [r"Pré-Tri (semi-parallèle): " + n for n in names_v2],
         [r"2-pass: " + n for n in names_v3],
         [r"2-pass (parallèle): " + n for n in names_v3],
 ]
-bar_names = ["Pré-Tri", "Pré-Tri (parallèle)", "2-passes", "2-passes (parallèle)"]
+bar_names = ["Pré-Tri", "Pré-Tri\n(parallèle)", "Pré-Tri\n(semi-parallèle)", "2-passes", "2-passes\n(parallèle)"]
 
 # Find the maximum number of components
 max_len = max(len(d) for d in data)
@@ -44,8 +46,9 @@ bar_width = 0.6
 # and V3 (last two) groups for visual separation.
 indices = np.arange(len(data), dtype=float)
 gap = 0.6
-if len(indices) >= 4:
-        indices[2:] += gap
+N_before = 3  # number of groups before the gap (set to 3 for split 3 then 2)
+if len(indices) > N_before:
+        indices[N_before:] += gap
 
 bottom = np.zeros(len(data))
 colors = plt.cm.tab20.colors

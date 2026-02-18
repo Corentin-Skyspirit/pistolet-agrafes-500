@@ -11,5 +11,6 @@
 **.o
 
 **.venv
+**.svg
 **.png
 .vscode
